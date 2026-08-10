@@ -1,0 +1,10 @@
+# Hafta 1 — indeksleme katmanı yalnızca standart kütüphane kullanıyor.
+# Aşağıdakiler Hafta 2+ için baştan kuruldu.
+
+anthropic>=0.40.0      # Claude API — cevaplama katmanı ve tool use
+voyageai>=0.3.0        # embedding
+numpy>=2.0             # vektör benzerliği
+rank-bm25>=0.2.2       # anahtar kelime araması (hibrit aramanın BM25 tarafı)
+python-dotenv>=1.0     # .env okuma
+
+pytest>=8.0            # test

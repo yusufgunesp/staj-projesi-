@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# API anahtarları
+.env
+
+# İndeks çıktıları ve koşu kayıtları — üretilen veri, repoya girmez
+data/
+runs/
+
+.DS_Store
