@@ -14,8 +14,8 @@ anında kontrol edilebiliyor.
 | Hafta | Hedef | Durum |
 |-------|-------|-------|
 | 1 | Kod sembolü çıkarma, doküman parçalama | **Tamam** |
-| 2 | Embedding + arama katmanı, çalışan temel sürüm | Sırada |
-| 3 | Hibrit arama, reranking, ölçüm ve prompt iyileştirme | — |
+| 2 | Embedding + arama katmanı, çalışan temel sürüm | **Tamam** (cevaplama katmanı hariç) |
+| 3 | Reranking, ölçüm ve prompt iyileştirme | Sırada |
 | 4 | Claude Code / MCP entegrasyonu, dokümantasyon, demo | — |
 
 ## Kurulum
@@ -38,13 +38,23 @@ Bir repoyu indeksle:
 .venv/bin/python -m codeqa index /yol/repo -o data/chunks.jsonl
 ```
 
-İndeksin içine bak (embedding araması gelene kadar geçici anahtar kelime araması):
+Parçaları vektörleştir:
 
 ```bash
-.venv/bin/python -m codeqa grep "sipariş" -i data/chunks.jsonl
+.venv/bin/python -m codeqa embed --provider hash
 ```
 
-İstatistikler:
+Ara:
+
+```bash
+.venv/bin/python -m codeqa search "ödeme akışı nerede başlıyor"
+```
+
+Sağlayıcılar: `voyage` (bulut, `VOYAGE_API_KEY` gerekir), `ollama` (local, kod dışarı çıkmaz),
+`hash` (anahtarsız — anlamsal arama **yapmaz**, sadece kelime örtüşmesine bakar; boru hattını
+anahtar olmadan denemek için). Arama modları: `--mode hybrid` (varsayılan), `vector`, `bm25`.
+
+İstatistikler ve ham metin araması:
 
 ```bash
 .venv/bin/python -m codeqa stats -i data/chunks.jsonl
@@ -84,6 +94,38 @@ etiketle birlikte gidiyor (`Chunk.embed_text`). Kullanıcıya sadece kodun kendi
 Etiket şimdilik deterministik — dosya yolu, nitelenmiş ad, tür ve modül açıklaması. Parçanın ne
 işe yaradığını LLM'e bir cümleyle yazdırmak Hafta 3'te denenecek.
 
+### Arama
+
+İki yöntem farklı soruları çözüyor, o yüzden ikisi birlikte kullanılıyor:
+
+- **BM25** tam isim eşleşmesinde iyi. "`OrderService.create` nerede" sorusunda embedding araması
+  sembolü kaçırabiliyor, BM25 doğrudan buluyor. Kod tokenları ayrıştırılıyor
+  (`getUserOrders` → get, user, orders), yoksa "sipariş id" araması `order_id`'yi bulamıyor.
+- **Vektör araması** dolaylı anlatımlarda iyi. Kodda "ödeme" kelimesi geçmese bile ilgili
+  fonksiyonu getirebiliyor.
+
+Birleştirme **RRF** (Reciprocal Rank Fusion) ile: skorlar değil sıralamalar toplanıyor, böylece
+iki yöntemin farklı ölçekleri normalize edilmek zorunda kalmıyor. İki yöntemin de üst sıralarda
+gösterdiği parça öne çıkıyor; sonuçlarda hangi yöntemin getirdiği `(bm25+vector)` olarak
+gösteriliyor.
+
+### Embedding sağlayıcısı takılabilir
+
+Model iki ayrı yerde kullanılıyor ve bunların yeri değiştirilebilir olması önemli:
+
+| Katman | Ne gönderiliyor | Sağlayıcı |
+|--------|-----------------|-----------|
+| Embedding (indeksleme) | Kod tabanının **tamamı** | `Embedder` arayüzü — Voyage / Ollama / hash |
+| Cevaplama (LLM) | Sadece bulunan parçalar | Henüz yazılmadı (Hafta 3) |
+
+Gizlilik açısından asıl hacim embedding tarafında: indeksleme sırasında kodun her satırı dışarı
+çıkıyor, cevaplama sırasında sadece ilgili parçalar. Müşteri kodunun dışarı çıkamadığı bir projede
+`--provider ollama` ile tüm indeksleme local kalıyor.
+
+Vektörler içerik karmasına göre `data/embeddings/` altında önbelleğe alınıyor. Değişmemiş parça
+yeniden embed edilmiyor; aynı içeriğe sahip parçalar (tekrar eden `__init__.py` kalıpları gibi)
+tek kez hesaplanıyor.
+
 ### Çıktı formatı
 
 `data/chunks.jsonl` — satır başına bir parça:
@@ -112,31 +154,41 @@ ilk adımı.
 
 Sembol çıkarıcı, `anthropic` SDK'sı üzerinde denendi: **1097 dosya, 4310 parça, 0 hata**.
 Rastgele seçilen 500 parçanın satır aralıkları kaynak dosyalarla karşılaştırıldı, hepsi tuttu.
-Ayrıca 21 birim testi var (`tests/`).
+Aynı repo uçtan uca indekslenip aranabiliyor. **43 birim testi** var (`tests/`); testler ağ
+erişimi ve API anahtarı olmadan çalışıyor.
 
 ## Dosya yapısı
 
 ```
 codeqa/
-  models.py    Chunk veri modeli
-  indexer.py   Python AST sembol çıkarıcı
-  docs.py      Markdown parçalayıcı
-  cli.py       komut satırı arayüzü
-tests/         birim testleri
-data/          indeks çıktıları (git'e girmez)
+  models.py      Chunk veri modeli
+  indexer.py     Python AST sembol çıkarıcı
+  docs.py        Markdown parçalayıcı
+  embeddings.py  sağlayıcı arayüzü (Voyage / Ollama / hash) + disk önbelleği
+  search.py      BM25, vektör araması, RRF birleştirme
+  cli.py         komut satırı arayüzü
+tests/           birim testleri
+data/            indeks ve vektör çıktıları (git'e girmez)
 ```
 
 ## Sıradaki adımlar
 
-1. **Embedding katmanı** — Voyage AI ile parça vektörleri, diske cache'lenerek
-2. **Arama** — kosinüs benzerliği + BM25, hibrit birleştirme
-3. **Cevaplama** — Claude'a `read_file` ve `search_symbol` tool'ları verilerek indekste eksik
-   kalan yerlerin canlı okunması
-4. **Ölçüm** — test repo'su üzerinde 20 soruluk set, temel sürümden final sürüme doğruluk artışı
+1. **Cevaplama katmanı** — Claude'a `read_file` ve `search_symbol` tool'ları verilerek indekste
+   eksik kalan yerlerin canlı okunması, cevapların `dosya:satır` referanslı üretilmesi
+2. **Reranking** — hibrit aramanın ilk N sonucunu yeniden sıralama
+3. **Ölçüm** — test repo'su üzerinde 20 soruluk set, temel sürümden final sürüme doğruluk artışı
+4. **Entegrasyon** — Claude Code / MCP
 
 ### Açık konular
 
 - Ollama ile local model kullanımının gerekçesi: müşteri kodu gizliliği bir zorunluluk mu, yoksa
-  karşılaştırma amaçlı bir opsiyon mu?
-- Güncel model isimleri ve fiyatlandırma resmi dokümantasyondan doğrulanacak
+  karşılaştırma amaçlı bir opsiyon mu? (Mimari her iki cevaba da hazır, ama hangi sağlayıcının
+  varsayılan olacağı ve local modelin ölçüleceği bu cevaba bağlı.)
 - Test için kullanılacak örnek repo seçilecek
+
+### Doğrulanan konular
+
+- Embedding modeli: `voyage-code-3` — kod için önerilen model, 1024 boyut, 32k bağlam
+  ([Voyage dokümantasyonu](https://docs.voyageai.com/docs/embeddings), 10.08.2026)
+- Cevaplama katmanı için model isimleri: `claude-opus-5` (ana katman), `claude-haiku-4-5`
+  (hacimli basit işler ve değerlendirme çağrıları)

@@ -7,9 +7,13 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from .docs import index_docs
+from .embeddings import EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
 from .models import Chunk
+from .search import HybridSearch
 
 DEFAULT_OUTPUT = Path("data/chunks.jsonl")
 
@@ -57,10 +61,10 @@ def cmd_index(args: argparse.Namespace) -> int:
 
 
 def cmd_grep(args: argparse.Namespace) -> int:
-    """İndeks üzerinde basit anahtar kelime araması.
+    """İndeks üzerinde ham alt dize araması.
 
-    Embedding + hibrit arama katmanı gelene kadar indeksin doğruluğunu gözle
-    kontrol etmek için var; nihai arama katmanı bu değil.
+    Sıralama yok, embedding gerektirmiyor; indeksin içeriğini gözle kontrol
+    etmek için. Gerçek arama için `search` komutu kullanılmalı.
     """
     records = _read_jsonl(Path(args.index))
     needle = args.query.lower()
@@ -73,6 +77,68 @@ def cmd_grep(args: argparse.Namespace) -> int:
         snippet = record["text"].splitlines()[: args.lines]
         print("\n".join(snippet))
     print(f"\n{len(hits)} eşleşme (ilk {min(len(hits), args.limit)} tanesi gösterildi).")
+    return 0
+
+
+def _load_env() -> None:
+    """.env dosyasındaki anahtarları ortama alır (varsa)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover - opsiyonel bağımlılık
+        return
+    load_dotenv()
+
+
+def cmd_embed(args: argparse.Namespace) -> int:
+    _load_env()
+    records = _read_jsonl(Path(args.index))
+    embedder = get_embedder(args.provider, args.model)
+    cache = EmbeddingCache(embedder.name)
+
+    cached_before = len(cache)
+    _, computed = embed_records(records, embedder, cache, progress=True)
+
+    print(f"Sağlayıcı : {embedder.name}")
+    print(f"Parça     : {len(records)}")
+    print(f"Yeni      : {computed} embed edildi")
+    print(f"Önbellek  : {cached_before} → {len(cache)} vektör ({cache.path})")
+    return 0
+
+
+def _build_search(args: argparse.Namespace) -> HybridSearch:
+    _load_env()
+    records = _read_jsonl(Path(args.index))
+    embedder = get_embedder(args.provider, args.model)
+    cache = EmbeddingCache(embedder.name)
+
+    missing = [r for r in records if r["content_hash"] not in cache]
+    if missing:
+        sys.exit(
+            f"{len(missing)} parçanın vektörü yok. Önce şunu çalıştırın:\n"
+            f"  python -m codeqa embed --provider {args.provider}"
+        )
+
+    vectors = np.stack([cache.get(r["content_hash"]) for r in records])
+    return HybridSearch(records, vectors, embedder)
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    searcher = _build_search(args)
+    hits = searcher.search(args.query, k=args.limit, mode=args.mode)
+
+    if not hits:
+        print("Sonuç bulunamadı.")
+        return 1
+
+    for rank, hit in enumerate(hits, start=1):
+        methods = "+".join(hit.sources)
+        print(f"\n{rank}. {hit.location}  [{hit.record['kind']}] {hit.name}")
+        print(f"   skor {hit.score:.4f} ({methods})")
+        if hit.record.get("signature"):
+            print(f"   {hit.record['signature']}")
+        snippet = hit.record["text"].splitlines()[: args.lines]
+        for line in snippet:
+            print(f"   | {line}")
     return 0
 
 
@@ -115,7 +181,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     index_parser.set_defaults(func=cmd_index)
 
-    grep_parser = subparsers.add_parser("grep", help="İndekste anahtar kelime ara (geçici)")
+    embed_parser = subparsers.add_parser("embed", help="İndeksteki parçaları vektörleştir")
+    embed_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
+    embed_parser.add_argument(
+        "--provider",
+        default="hash",
+        choices=["voyage", "ollama", "hash"],
+        help="Embedding sağlayıcısı (varsayılan: hash — anahtar gerektirmez, anlamsal arama yapmaz)",
+    )
+    embed_parser.add_argument("--model", default=None, help="Sağlayıcıya özel model adı")
+    embed_parser.set_defaults(func=cmd_embed)
+
+    search_parser = subparsers.add_parser("search", help="Doğal dilde arama")
+    search_parser.add_argument("query", help="Soru ya da aranacak metin")
+    search_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
+    search_parser.add_argument(
+        "--mode",
+        default="hybrid",
+        choices=["hybrid", "vector", "bm25"],
+        help="Arama modu (varsayılan: hybrid)",
+    )
+    search_parser.add_argument(
+        "--provider", default="hash", choices=["voyage", "ollama", "hash"], help="Embedding sağlayıcısı"
+    )
+    search_parser.add_argument("--model", default=None, help="Sağlayıcıya özel model adı")
+    search_parser.add_argument("-n", "--limit", type=int, default=5, help="Sonuç sayısı")
+    search_parser.add_argument("--lines", type=int, default=6, help="Parça başına gösterilecek satır")
+    search_parser.set_defaults(func=cmd_search)
+
+    grep_parser = subparsers.add_parser("grep", help="İndekste ham metin ara (embedding gerektirmez)")
     grep_parser.add_argument("query", help="Aranacak metin")
     grep_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
     grep_parser.add_argument("-n", "--limit", type=int, default=5, help="Gösterilecek sonuç sayısı")
