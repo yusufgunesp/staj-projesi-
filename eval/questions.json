@@ -1,0 +1,123 @@
+{
+  "_aciklama": "Ölçüm için soru seti. `expect_files` cevabın gerçekten bulunduğu dosyalar — elle işaretlendi. Gerçek test repo'su seçildiğinde bu dosyanın aynısı o repo için hazırlanacak; şimdilik baseline aracın kendi kod tabanı üzerinden ölçülüyor.",
+  "repo": ".",
+  "index": "data/chunks.jsonl",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "Bir Python dosyası nasıl parçalara ayrılıyor?",
+      "expect_files": ["codeqa/indexer.py"],
+      "expect_symbols": ["extract_from_source"]
+    },
+    {
+      "id": "q02",
+      "question": "Hangi dizinler taranmıyor, node_modules atlanıyor mu?",
+      "expect_files": ["codeqa/indexer.py"],
+      "expect_symbols": ["iter_python_files"]
+    },
+    {
+      "id": "q03",
+      "question": "Bir fonksiyonun dekoratörleri parçaya dahil ediliyor mu?",
+      "expect_files": ["codeqa/indexer.py"],
+      "note": "_span dekoratör satırını başlangıca çekiyor"
+    },
+    {
+      "id": "q04",
+      "question": "Sınıf parçasının metninde ne var, metot gövdeleri tekrar ediliyor mu?",
+      "expect_files": ["codeqa/indexer.py"]
+    },
+    {
+      "id": "q05",
+      "question": "Sözdizimi hatası olan bir dosya indeksleme koşusunu durduruyor mu?",
+      "expect_files": ["codeqa/indexer.py"],
+      "expect_symbols": ["index_repo"]
+    },
+    {
+      "id": "q06",
+      "question": "Markdown dosyaları nasıl bölünüyor?",
+      "expect_files": ["codeqa/docs.py"],
+      "expect_symbols": ["extract_from_markdown"]
+    },
+    {
+      "id": "q07",
+      "question": "Kod bloğu içinde geçen # işaretli satırlar başlık sayılıyor mu?",
+      "expect_files": ["codeqa/docs.py"],
+      "note": "fence takibi — in_fence bayrağı"
+    },
+    {
+      "id": "q08",
+      "question": "Çok uzun bir doküman bölümü ne oluyor, üst üste binen kısım var mı?",
+      "expect_files": ["codeqa/docs.py"]
+    },
+    {
+      "id": "q09",
+      "question": "content_hash ne işe yarıyor?",
+      "expect_files": ["codeqa/models.py"]
+    },
+    {
+      "id": "q10",
+      "question": "Embedding'e gönderilen metin tam olarak neyi içeriyor?",
+      "expect_files": ["codeqa/models.py", "codeqa/embeddings.py"],
+      "note": "embed_text = context + text; embed_records bunu kullanıyor"
+    },
+    {
+      "id": "q11",
+      "question": "Hangi embedding sağlayıcıları destekleniyor?",
+      "expect_files": ["codeqa/embeddings.py"],
+      "expect_symbols": ["get_embedder"]
+    },
+    {
+      "id": "q12",
+      "question": "Kodu dışarı göndermeden local bir model nasıl kullanılır?",
+      "expect_files": ["codeqa/embeddings.py"],
+      "note": "dolaylı anlatım — 'Ollama' kelimesi soruda geçmiyor"
+    },
+    {
+      "id": "q13",
+      "question": "Hesaplanan vektörler nerede saklanıyor?",
+      "expect_files": ["codeqa/embeddings.py"],
+      "expect_symbols": ["EmbeddingCache"]
+    },
+    {
+      "id": "q14",
+      "question": "Aynı parça her indekslemede yeniden embed ediliyor mu?",
+      "expect_files": ["codeqa/embeddings.py"],
+      "expect_symbols": ["embed_records"]
+    },
+    {
+      "id": "q15",
+      "question": "getUserOrders gibi bir isim arama sırasında nasıl işleniyor?",
+      "expect_files": ["codeqa/embeddings.py"],
+      "expect_symbols": ["tokenize"]
+    },
+    {
+      "id": "q16",
+      "question": "BM25 sonuçlarıyla vektör araması sonuçları nasıl birleştiriliyor?",
+      "expect_files": ["codeqa/search.py"],
+      "expect_symbols": ["reciprocal_rank_fusion"]
+    },
+    {
+      "id": "q17",
+      "question": "Hiçbir şeye benzemeyen bir sorgu atılırsa ne dönüyor?",
+      "expect_files": ["codeqa/search.py"],
+      "note": "sıfır benzerlik eşiği"
+    },
+    {
+      "id": "q18",
+      "question": "Model kodu okumak için hangi araçları kullanabiliyor?",
+      "expect_files": ["codeqa/answer.py"]
+    },
+    {
+      "id": "q19",
+      "question": "Model repo dışındaki bir dosyayı okuyabilir mi?",
+      "expect_files": ["codeqa/answer.py"],
+      "note": "güvenlik — yol repo köküne hapsedilmiş"
+    },
+    {
+      "id": "q20",
+      "question": "Model olmayan bir satır numarasına referans verirse bu nasıl yakalanıyor?",
+      "expect_files": ["codeqa/answer.py"],
+      "expect_symbols": ["verify_citations"]
+    }
+  ]
+}

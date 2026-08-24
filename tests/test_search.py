@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from codeqa.embeddings import (
+    CachedEmbedder,
     EmbeddingCache,
     HashEmbedder,
     embed_records,
@@ -107,6 +108,40 @@ def test_get_embedder_returns_hash():
     assert isinstance(get_embedder("hash"), HashEmbedder)
 
 
+def test_nomic_model_gets_task_prefixes():
+    """Nomic ailesi görev öneki olmadan doğru çalışmıyor — ölçüldü."""
+    from codeqa.embeddings import OllamaEmbedder
+
+    embedder = OllamaEmbedder("nomic-embed-text")
+    assert embedder.document_prefix == "search_document: "
+    assert embedder.query_prefix == "search_query: "
+
+
+def test_unknown_model_gets_no_prefix():
+    from codeqa.embeddings import OllamaEmbedder
+
+    embedder = OllamaEmbedder("baska-bir-model")
+    assert embedder.document_prefix == "" and embedder.query_prefix == ""
+
+
+def test_prefixes_are_applied_to_requests(monkeypatch):
+    from codeqa.embeddings import OllamaEmbedder
+
+    embedder = OllamaEmbedder("nomic-embed-text")
+    sent: list[str] = []
+
+    def fake_post(payload):
+        sent.extend(payload["input"])
+        return {"embeddings": [[1.0, 0.0] for _ in payload["input"]]}
+
+    monkeypatch.setattr(embedder, "_post", fake_post)
+    embedder.embed_documents(["def f(): pass"])
+    embedder.embed_query("f nerede")
+
+    assert sent[0].startswith("search_document: ")
+    assert sent[1].startswith("search_query: ")
+
+
 # --- önbellek ----------------------------------------------------------------
 
 
@@ -143,6 +178,63 @@ def test_embed_records_handles_empty_input(embedder):
     assert computed == 0
 
 
+class _CountingEmbedder(HashEmbedder):
+    """Kaç kez sorgu embed edildiğini sayar."""
+
+    def __init__(self, dimension=256):
+        super().__init__(dimension)
+        self.query_calls = 0
+
+    def embed_query(self, text: str) -> np.ndarray:
+        self.query_calls += 1
+        return super().embed_query(text)
+
+
+def test_cached_embedder_reuses_query_vectors(tmp_path):
+    """Aynı sorgu ikinci kez embed edilmemeli — hız limitli sağlayıcıda kritik."""
+    inner = _CountingEmbedder()
+    cached = CachedEmbedder(inner, EmbeddingCache(inner.name, cache_dir=tmp_path))
+
+    first = cached.embed_query("sipariş akışı")
+    second = cached.embed_query("sipariş akışı")
+
+    assert inner.query_calls == 1
+    assert np.array_equal(first, second)
+
+
+def test_cached_embedder_separates_different_queries(tmp_path):
+    inner = _CountingEmbedder()
+    cached = CachedEmbedder(inner, EmbeddingCache(inner.name, cache_dir=tmp_path))
+
+    cached.embed_query("sipariş")
+    cached.embed_query("ödeme")
+
+    assert inner.query_calls == 2
+
+
+def test_cached_embedder_survives_restart(tmp_path):
+    inner = _CountingEmbedder()
+    cache_name = inner.name
+    CachedEmbedder(inner, EmbeddingCache(cache_name, cache_dir=tmp_path)).embed_query("soru")
+
+    fresh = _CountingEmbedder()
+    CachedEmbedder(fresh, EmbeddingCache(cache_name, cache_dir=tmp_path)).embed_query("soru")
+
+    assert fresh.query_calls == 0  # diskteki önbellekten geldi
+
+
+def test_cached_embedder_query_keys_do_not_collide_with_chunks(tmp_path):
+    """Sorgu ve parça anahtarları aynı dosyada, çakışmamalı."""
+    inner = _CountingEmbedder()
+    cache = EmbeddingCache(inner.name, cache_dir=tmp_path)
+    cached = CachedEmbedder(inner, cache)
+
+    cache.put("abc123", np.zeros(inner.dimension, dtype=np.float32))
+    cached.embed_query("abc123")
+
+    assert len(cache) == 2
+
+
 # --- arama -------------------------------------------------------------------
 
 
@@ -155,6 +247,36 @@ def test_vector_search_returns_ranked_results(records, embedder):
     vectors, _ = embed_records(records, embedder, None)
     hits = VectorSearch(records, vectors, embedder).search("invoice email", k=3)
     assert records[hits[0][0]]["name"] == "send_invoice_email"
+
+
+class _FixedEmbedder(HashEmbedder):
+    """Sorguyu sabit bir vektöre çeviren embedder; eşik testini belirlenimci kılar."""
+
+    def __init__(self, query_vector: np.ndarray):
+        super().__init__(dimension=len(query_vector))
+        self._query_vector = query_vector
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._query_vector
+
+
+def test_vector_search_drops_zero_similarity_results():
+    """Örtüşmeyen parça sonuç olarak dönmemeli — yoksa modele çöp parça gidiyor."""
+    documents = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)  # 2. parça dik
+    fake_records = [{"name": "eslesen"}, {"name": "alakasiz"}]
+    searcher = VectorSearch(fake_records, documents, _FixedEmbedder(np.array([1.0, 0.0], np.float32)))
+
+    results = searcher.search("herhangi", k=5)
+
+    assert [fake_records[i]["name"] for i, _ in results] == ["eslesen"]
+
+
+def test_vector_search_returns_nothing_when_all_orthogonal():
+    documents = np.array([[0.0, 1.0], [0.0, 1.0]], dtype=np.float32)
+    searcher = VectorSearch(
+        [{"name": "a"}, {"name": "b"}], documents, _FixedEmbedder(np.array([1.0, 0.0], np.float32))
+    )
+    assert searcher.search("herhangi", k=5) == []
 
 
 def test_vector_search_rejects_mismatched_vectors(records, embedder):

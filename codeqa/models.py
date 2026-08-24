@@ -38,8 +38,17 @@ class Chunk:
 
     @property
     def content_hash(self) -> str:
-        """Değişiklik tespiti için; aynı içerik yeniden embed edilmesin diye."""
-        return _hash(self.text)
+        """Embedding önbelleğinin anahtarı; aynı içerik yeniden embed edilmesin diye.
+
+        `text` değil `embed_text` üzerinden hesaplanıyor, çünkü embedding'e giden
+        şey bağlam etiketiyle birlikte metin. Sadece `text` hash'lenirse iki hata
+        çıkıyor: (1) gövde aynı kalıp etiket değişince (dosya taşındı, modül
+        docstring'i güncellendi) önbellekten eski bağlamla üretilmiş vektör
+        dönüyor, (2) iki dosyadaki birebir aynı fonksiyon tek vektörü paylaşıyor
+        — oysa farklı dosyalarda oldukları için etiketleri, dolayısıyla
+        vektörleri de farklı olmalı.
+        """
+        return _hash(self.embed_text)
 
     @property
     def embed_text(self) -> str:

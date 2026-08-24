@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -49,6 +50,25 @@ class Embedder(ABC):
         """
 
 
+def retry_on_rate_limit(call, error_type, max_retries: int = 8, base_wait: int = 25):
+    """Hız limitine takılan bir Voyage çağrısını artan sürelerle yeniden dener.
+
+    Hem embedding hem reranker aynı limite tabi olduğu için ortak.
+    Limitler dakikalık pencerelerde sıfırlandığından bekleme süresi 25 saniyeden
+    başlıyor — daha kısası boşuna deneme oluyor.
+    """
+    for attempt in range(max_retries):
+        try:
+            return call()
+        except error_type:
+            if attempt == max_retries - 1:
+                raise
+            wait = base_wait * (attempt + 1)
+            print(f"  hız limiti — {wait} sn bekleniyor ({attempt + 1}/{max_retries})")
+            time.sleep(wait)
+    raise RuntimeError("ulaşılamaz")  # pragma: no cover
+
+
 def _normalize(matrix: np.ndarray) -> np.ndarray:
     """Satırları birim uzunluğa getirir; böylece kosinüs benzerliği = iç çarpım."""
     norms = np.linalg.norm(matrix, axis=-1, keepdims=True)
@@ -57,13 +77,29 @@ def _normalize(matrix: np.ndarray) -> np.ndarray:
 
 
 class VoyageEmbedder(Embedder):
-    """Voyage AI. `voyage-code-3` kod için özel olarak eğitilmiş model."""
+    """Voyage AI. `voyage-code-3` kod için özel olarak eğitilmiş model.
 
-    #: Tek istekte gönderilecek parça sayısı. API sınırı 1000, ama büyük
-    #: parçalarda token sınırına önce takılıyoruz; 128 güvenli bir orta yol.
-    BATCH_SIZE = 128
+    Hız limitine takılmak istisna değil kural: ödeme yöntemi eklenmemiş bir
+    hesapta limit 3 istek/dakika ve 10.000 token/dakika. Ödeme yöntemi eklense
+    bile büyük bir müşteri reposunu indekslerken limite girilir. Bu yüzden
+    yeniden deneme ve istekler arası bekleme sağlayıcının kendi içinde.
+    """
 
-    def __init__(self, model: str = "voyage-code-3", api_key: str | None = None):
+    #: Tek istekte gönderilecek parça sayısı. API 1000'e izin veriyor ama
+    #: dakikalık token limitine önce takılıyoruz; küçük yığın daha güvenli.
+    BATCH_SIZE = 32
+
+    #: Hız limiti hatasında beklenecek süre. Limitler dakikalık pencerelerde
+    #: sıfırlandığı için bir dakikaya yakın beklemek en garantili yol.
+    RETRY_WAIT_SECONDS = 25
+
+    def __init__(
+        self,
+        model: str = "voyage-code-3",
+        api_key: str | None = None,
+        batch_size: int | None = None,
+        max_retries: int = 8,
+    ):
         try:
             import voyageai
         except ImportError as exc:  # pragma: no cover - kurulum hatası
@@ -76,15 +112,31 @@ class VoyageEmbedder(Embedder):
                 "--provider ollama / --provider hash kullanın."
             )
         self._client = voyageai.Client(api_key=key)
+        self._voyageai = voyageai
         self.model = model
         self.name = f"voyage:{model}"
         self.dimension = 1024
+        self.batch_size = batch_size or self.BATCH_SIZE
+        self.max_retries = max_retries
+
+    def _request(self, batch: list[str], input_type: str):
+        """Tek bir isteği, hız limitinde bekleyerek dener."""
+        return retry_on_rate_limit(
+            lambda: self._client.embed(batch, model=self.model, input_type=input_type),
+            self._voyageai.error.RateLimitError,
+            max_retries=self.max_retries,
+            base_wait=self.RETRY_WAIT_SECONDS,
+        )
 
     def _embed(self, texts: list[str], input_type: str) -> np.ndarray:
         vectors: list[list[float]] = []
-        for start in range(0, len(texts), self.BATCH_SIZE):
-            batch = texts[start : start + self.BATCH_SIZE]
-            result = self._client.embed(batch, model=self.model, input_type=input_type)
+        batches = range(0, len(texts), self.batch_size)
+        total = len(range(0, len(texts), self.batch_size))
+        for index, start in enumerate(batches, start=1):
+            batch = texts[start : start + self.batch_size]
+            if total > 1:
+                print(f"  yığın {index}/{total} ({len(vectors)}/{len(texts)} parça)")
+            result = self._request(batch, input_type)
             vectors.extend(result.embeddings)
         return _normalize(np.asarray(vectors, dtype=np.float32))
 
@@ -93,6 +145,22 @@ class VoyageEmbedder(Embedder):
 
     def embed_query(self, text: str) -> np.ndarray:
         return self._embed([text], "query")[0]
+
+
+#: Bazı modeller metnin başına görev öneki bekliyor. Nomic ailesi bunu zorunlu
+#: kılıyor: önek olmadan model neyin doküman neyin sorgu olduğunu bilmiyor ve
+#: arama kalitesi çöküyor (ölçüldü: recall %40 → %95).
+#: Anahtar model adının önekiyle eşleşiyor, değer (doküman öneki, sorgu öneki).
+TASK_PREFIXES: dict[str, tuple[str, str]] = {
+    "nomic-embed-text": ("search_document: ", "search_query: "),
+}
+
+
+def _task_prefixes(model: str) -> tuple[str, str]:
+    for prefix, pair in TASK_PREFIXES.items():
+        if model.startswith(prefix):
+            return pair
+    return ("", "")
 
 
 class OllamaEmbedder(Embedder):
@@ -108,6 +176,7 @@ class OllamaEmbedder(Embedder):
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
         self.name = f"ollama:{model}"
         self.dimension = 0  # ilk cevaptan öğreniliyor
+        self.document_prefix, self.query_prefix = _task_prefixes(model)
 
     def _post(self, payload: dict) -> dict:
         request = urllib.request.Request(
@@ -135,10 +204,10 @@ class OllamaEmbedder(Embedder):
         return matrix
 
     def embed_documents(self, texts: list[str]) -> np.ndarray:
-        return self._embed(texts)
+        return self._embed([f"{self.document_prefix}{text}" for text in texts])
 
     def embed_query(self, text: str) -> np.ndarray:
-        return self._embed([text])[0]
+        return self._embed([f"{self.query_prefix}{text}"])[0]
 
 
 _TOKEN_SPLIT = re.compile(r"[^0-9A-Za-z_]+")
@@ -192,6 +261,37 @@ class HashEmbedder(Embedder):
 
     def embed_query(self, text: str) -> np.ndarray:
         return _normalize(self._vector(text)[None, :])[0]
+
+
+class CachedEmbedder(Embedder):
+    """Sorgu vektörlerini de önbelleğe alan sarmalayıcı.
+
+    Parça vektörleri zaten `embed_records` içinde önbelleğe alınıyor, ama her
+    arama sorgusu ayrı bir API isteği demek. Ölçüm koşusunda 20 soru üç ayrı
+    modda çalışınca aynı sorgu defalarca embed ediliyor ve hız limitli bir
+    hesapta bu tek başına dakikalar sürüyor.
+    """
+
+    def __init__(self, embedder: Embedder, cache: EmbeddingCache):
+        self._embedder = embedder
+        self._cache = cache
+        self.name = embedder.name
+        self.dimension = embedder.dimension
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        return self._embedder.embed_documents(texts)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        # Parça anahtarlarıyla çakışmasın diye ayrı önek.
+        digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).hexdigest()
+        key = f"query::{digest}"
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        vector = self._embedder.embed_query(text)
+        self._cache.put(key, vector)
+        self._cache.save()
+        return vector
 
 
 def get_embedder(provider: str, model: str | None = None) -> Embedder:
@@ -264,19 +364,24 @@ def embed_records(
 
     keys = [record["content_hash"] for record in records]
     missing = [i for i, key in enumerate(keys) if cache is None or key not in cache]
-    vectors = np.zeros((0, 0), dtype=np.float32)
-
-    if missing:
-        texts = [f"{records[i]['context']}\n\n{records[i]['text']}" for i in missing]
-        if progress:
-            print(f"{len(missing)} parça embed ediliyor ({embedder.name})...")
-        vectors = embedder.embed_documents(texts)
-        for position, index in enumerate(missing):
-            if cache is not None:
-                cache.put(keys[index], vectors[position])
 
     if cache is None:
-        return vectors, len(missing)
+        texts = [f"{records[i]['context']}\n\n{records[i]['text']}" for i in missing]
+        return embedder.embed_documents(texts), len(missing)
 
-    cache.save()
+    if missing and progress:
+        print(f"{len(missing)} parça embed ediliyor ({embedder.name})...")
+
+    # Önbellek grup grup diske yazılıyor. Hız limitli bir sağlayıcıda koşu
+    # dakikalar sürebiliyor; ortada bir yerde patlarsa o ana kadarki iş
+    # kaybolmasın diye. Tekrar çalıştırıldığında kalınan yerden devam ediyor.
+    group_size = max(getattr(embedder, "batch_size", 64), 1) * 2
+    for start in range(0, len(missing), group_size):
+        group = missing[start : start + group_size]
+        texts = [f"{records[i]['context']}\n\n{records[i]['text']}" for i in group]
+        vectors = embedder.embed_documents(texts)
+        for position, index in enumerate(group):
+            cache.put(keys[index], vectors[position])
+        cache.save()
+
     return np.stack([cache.get(key) for key in keys]), len(missing)

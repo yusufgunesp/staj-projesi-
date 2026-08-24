@@ -79,22 +79,35 @@ class VectorSearch:
         query_vector = self.embedder.embed_query(query)
         scores = self.vectors @ query_vector
         top = np.argsort(scores)[::-1][:k]
-        return [(int(i), float(scores[i])) for i in top]
+        # Sıfır ve altı benzerlik = hiç örtüşme yok. Bu eşik olmadan alakasız
+        # bir sorgu bile k tane sonuç döndürüyor ve modele çöp parçalar
+        # "bulunan sonuç" diye gidiyor. Mutlak bir kalite eşiği değil —
+        # gerçek embedding modellerinde skorlar nadiren sıfırın altına iner.
+        return [(int(i), float(scores[i])) for i in top if scores[i] > 0]
 
 
 def reciprocal_rank_fusion(
-    rankings: dict[str, list[tuple[int, float]]], k: int, rrf_k: int = RRF_K
+    rankings: dict[str, list[tuple[int, float]]],
+    k: int,
+    rrf_k: int = RRF_K,
+    weights: dict[str, float] | None = None,
 ) -> list[tuple[int, float, tuple[str, ...]]]:
     """Birden çok sıralamayı tek listede birleştirir.
 
     Her yöntem bir parçaya sırasına göre 1/(rrf_k + sıra) puan veriyor. İki
     yöntemin de üst sıralarda gösterdiği parça doğal olarak öne çıkıyor.
+
+    `weights` yöntemlere farklı ağırlık vermeyi sağlıyor. Eşit ağırlık, zayıf
+    olan yöntemi güçlü olan kadar dinlemek demek — hangi ağırlığın doğru olduğu
+    embedding kalitesine göre değişiyor, o yüzden ölçülerek belirleniyor.
     """
+    weights = weights or {}
     scores: dict[int, float] = {}
     sources: dict[int, list[str]] = {}
     for method, results in rankings.items():
+        weight = weights.get(method, 1.0)
         for rank, (index, _) in enumerate(results):
-            scores[index] = scores.get(index, 0.0) + 1.0 / (rrf_k + rank + 1)
+            scores[index] = scores.get(index, 0.0) + weight / (rrf_k + rank + 1)
             sources.setdefault(index, []).append(method)
 
     ordered = sorted(scores.items(), key=lambda item: -item[1])
@@ -102,18 +115,25 @@ def reciprocal_rank_fusion(
 
 
 class HybridSearch:
-    """BM25 + vektör araması, RRF ile birleştirilmiş."""
+    """BM25 + vektör araması, RRF ile birleştirilmiş; isteğe bağlı reranking."""
 
-    def __init__(self, records: list[dict], vectors: np.ndarray, embedder: Embedder):
+    def __init__(
+        self,
+        records: list[dict],
+        vectors: np.ndarray,
+        embedder: Embedder,
+        reranker=None,
+        weights: dict[str, float] | None = None,
+        pool_size: int | None = None,
+    ):
         self.records = records
         self.bm25 = BM25Search(records)
         self.vector = VectorSearch(records, vectors, embedder)
+        self.reranker = reranker
+        self.weights = weights or {}
+        self.pool_size = pool_size
 
-    def search(self, query: str, k: int = 5, mode: str = "hybrid") -> list[SearchHit]:
-        # Birleştirme öncesi her yöntemden daha fazla aday alınıyor; sadece k
-        # tane alınsa iki listenin kesişimi çok küçük kalıyor.
-        pool = max(k * 4, 20)
-
+    def _candidates(self, query: str, pool: int, mode: str):
         if mode == "bm25":
             rankings = {"bm25": self.bm25.search(query, pool)}
         elif mode == "vector":
@@ -125,8 +145,39 @@ class HybridSearch:
             }
         else:
             raise ValueError(f"Bilinmeyen arama modu: {mode} (hybrid | vector | bm25)")
+        return reciprocal_rank_fusion(rankings, pool, weights=self.weights)
 
-        return [
-            SearchHit(record=self.records[index], score=score, sources=sources)
-            for index, score, sources in reciprocal_rank_fusion(rankings, k)
+    def search(
+        self, query: str, k: int = 5, mode: str = "hybrid", rerank: bool | None = None
+    ) -> list[SearchHit]:
+        # Birleştirme öncesi her yöntemden daha fazla aday alınıyor; sadece k
+        # tane alınsa iki listenin kesişimi çok küçük kalıyor.
+        pool = self.pool_size or max(k * 4, 20)
+        use_rerank = self.reranker is not None if rerank is None else rerank
+        candidates = self._candidates(query, pool, mode)
+
+        if not use_rerank or self.reranker is None or not candidates:
+            return [
+                SearchHit(record=self.records[index], score=score, sources=sources)
+                for index, score, sources in candidates[:k]
+            ]
+
+        # Reranker'a parça metniyle birlikte konum etiketi de gidiyor: dosya yolu
+        # ve nitelenmiş ad, alaka değerlendirmesinde işe yarayan bilgiler.
+        documents = [
+            f"{self.records[index]['context']}\n\n{self.records[index]['text']}"
+            for index, _, _ in candidates
         ]
+        sources_by_position = {position: item[2] for position, item in enumerate(candidates)}
+
+        hits: list[SearchHit] = []
+        for position, score in self.reranker.rerank(query, documents, top_k=k):
+            record_index = candidates[position][0]
+            hits.append(
+                SearchHit(
+                    record=self.records[record_index],
+                    score=score,
+                    sources=sources_by_position[position] + ("rerank",),
+                )
+            )
+        return hits

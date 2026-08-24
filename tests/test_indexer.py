@@ -127,6 +127,27 @@ def test_embed_text_includes_context(chunks):
     assert func.text in func.embed_text
 
 
+def test_content_hash_covers_context_not_just_text():
+    """Gövde aynı, bağlam farklı → hash farklı olmalı.
+
+    Aksi hâlde iki dosyadaki birebir aynı fonksiyon tek vektörü paylaşır ve
+    bir dosya taşındığında önbellekten eski bağlamla üretilmiş vektör döner.
+    """
+    body = "def normalize(value):\n    return value.strip()\n"
+    first = extract_from_source(body, "api/orders.py")[0]
+    second = extract_from_source(body, "web/orders.py")[0]
+
+    assert first.text == second.text
+    assert first.content_hash != second.content_hash
+
+
+def test_content_hash_is_stable_for_identical_chunks():
+    body = "def normalize(value):\n    return value.strip()\n"
+    first = extract_from_source(body, "api/orders.py")[0]
+    second = extract_from_source(body, "api/orders.py")[0]
+    assert first.content_hash == second.content_hash
+
+
 def test_ids_are_unique(chunks):
     ids = [c.id for c in chunks]
     assert len(ids) == len(set(ids))
