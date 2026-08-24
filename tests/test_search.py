@@ -66,6 +66,20 @@ def test_tokenize_splits_dotted_paths():
     assert tokenize("services.payment.charge") == ["services", "payment", "charge"]
 
 
+def test_tokenize_keeps_turkish_letters():
+    """ASCII'ye kısıtlanırsa 'aşımı' → 'a' + 'm' oluyor ve Türkçe arama çöküyor."""
+    assert tokenize("Varsayılan zaman aşımı süresi") == [
+        "varsayılan",
+        "zaman",
+        "aşımı",
+        "süresi",
+    ]
+
+
+def test_tokenize_keeps_turkish_in_code_comments():
+    assert tokenize("# sipariş oluşturuluyor") == ["sipariş", "oluşturuluyor"]
+
+
 def test_tokenize_lowercases_and_drops_punctuation():
     assert tokenize("def charge_payment(order_id: int) -> bool:") == [
         "def",

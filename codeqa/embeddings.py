@@ -210,16 +210,22 @@ class OllamaEmbedder(Embedder):
         return self._embed([f"{self.query_prefix}{text}"])[0]
 
 
-_TOKEN_SPLIT = re.compile(r"[^0-9A-Za-z_]+")
+#: Sözcük olmayan her şey ayraç. `\w` Unicode farkında olduğu için Türkçe
+#: harfler (ı, ş, ğ, ü, ö, ç) korunuyor. ASCII'ye kısıtlanırsa "aşımı" kelimesi
+#: "a" + "m" diye parçalanıyor ve Türkçe sorgu/yorumlar aramada kayboluyor.
+_TOKEN_SPLIT = re.compile(r"[^\w]+", re.UNICODE)
 _CAMEL_SPLIT = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 
 def tokenize(text: str) -> list[str]:
-    """Kodu arama için kelimelere ayırır.
+    """Kodu ve soruyu arama için kelimelere ayırır.
 
     `getUserOrders` → get, user, orders. `order_id` → order, id. Bu ayrıştırma
     olmadan tam isim eşleşmesi çalışmıyor: kullanıcı "sipariş id" yazdığında
     `order_id` bulunamıyor.
+
+    İngilizce olmayan metin de bozulmadan geçmeli — hem soru Türkçe olabiliyor
+    hem de kod tabanında Türkçe yorum/docstring bulunabiliyor.
     """
     tokens: list[str] = []
     for piece in _TOKEN_SPLIT.split(text):

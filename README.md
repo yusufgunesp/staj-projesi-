@@ -102,7 +102,8 @@ işe yaradığını LLM'e bir cümleyle yazdırmak, ölçüm kurulduktan sonra d
 
 ### Arama
 
-İki yöntem farklı soruları çözüyor, o yüzden ikisi birlikte kullanılıyor:
+İki yöntem var ve tasarım varsayımı ikisinin birbirini tamamladığıydı. **Ölçüm bunu kısmen
+çürüttü** — hangisinin kazandığı repoya bağlı, aşağıdaki Ölçüm bölümüne bakın. Yöntemler:
 
 - **BM25** tam isim eşleşmesinde iyi. "`OrderService.create` nerede" sorusunda embedding araması
   sembolü kaçırabiliyor, BM25 doğrudan buluyor. Kod tokenları ayrıştırılıyor
@@ -113,7 +114,9 @@ işe yaradığını LLM'e bir cümleyle yazdırmak, ölçüm kurulduktan sonra d
 Birleştirme **RRF** (Reciprocal Rank Fusion) ile: skorlar değil sıralamalar toplanıyor, böylece
 iki yöntemin farklı ölçekleri normalize edilmek zorunda kalmıyor. İki yöntemin de üst sıralarda
 gösterdiği parça öne çıkıyor; sonuçlarda hangi yöntemin getirdiği `(bm25+vector)` olarak
-gösteriliyor.
+gösteriliyor. Ağırlıklar `--bm25-weight` / `--vector-weight` ile ayarlanabiliyor — RRF'nin
+zayıf bir sıralayıcıyı da hesaba katması, hibritin bazı repolarda saf vektörün gerisinde
+kalmasının sebebi.
 
 ### Embedding sağlayıcısı takılabilir
 
@@ -285,10 +288,40 @@ kalitesi düşer — bu durumda BM25 ağırlıklı bir yapılandırma (local vek
 karşı %50) daha mantıklı. Kodun dışarı çıkabildiği yerlerde `voyage-code-3` açık ara önde.
 Denenmemiş orta yol: `bge-m3` gibi daha güçlü bir local model.
 
-**Bu sayılar küçük bir set üzerinden.** 20 soruda bir soru %5 demek; %100 recall "her zaman
-bulur" anlamına gelmiyor. Soru seti aracın kendi kod tabanı için ve tanıdığı bir repo üzerinde
-yazıldı — gerçek müşteri repolarında (çok daha büyük, çok daha dağınık) sayıların düşmesi beklenir.
-Gerçek test repo'su seçilince ölçüm oradan tekrarlanacak.
+#### Büyük repo ölçümü — `anthropic` Python SDK
+
+Küçük set (kendi repomuz, 249 parça, 20 soru) yanıltıcıydı. Gerçek boyutta bir üçüncü taraf
+repoda ölçüm: **1097 dosya, 4310 parça, 60 soru** (40 dev / 20 test). Ayarlar yalnızca dev'de
+denendi, aşağıdaki sayılar **hiç dokunulmamış test bölmesinden**.
+
+| Mod | test recall@8 | sembol recall | test MRR |
+|-----|---------------|---------------|----------|
+| **Vektör** | **85%** | **100%** | **0.742** |
+| Hibrit | 80% | 100% | 0.581 |
+| BM25 | 15% | 95% | 0.025 |
+
+**Hibrit arama bu repoda işe yaramıyor — saf vektör araması daha iyi.** Projenin baştaki
+tasarım tercihlerinden biri, gerçek boyutta bir repoda doğrulanmadı.
+
+Sebebi BM25'in çökmesi (recall %15). Küçük repoda BM25 %95'ti; aradaki fark **dil**: kendi
+kodumuzun yorumları Türkçe, `anthropic` SDK'sı tamamen İngilizce. Türkçe sorgu kelimeleri
+İngilizce kodda sözcük olarak hiç geçmiyor, dolayısıyla BM25'in tutunacağı bir şey kalmıyor.
+RRF zayıf sıralayıcıyı da hesaba kattığı için hibrit, saf vektörü aşağı çekiyor.
+
+Denenen çözüm: sorguyu Haiku ile İngilizceye çevirip BM25'e vermek. BM25'i belirgin şekilde
+kurtardı (recall %15 → %57, MRR 0.078 → 0.290) ama hibrit yine saf vektörü geçemedi
+(0.522'ye karşı 0.665, dev bölmesinde). Yani çeviri doğru teşhis ama yeterli tedavi değil.
+
+**Buradan çıkan asıl sonuç:** doğru arama modu repoya göre değişiyor. Türkçe yorumlu küçük
+repoda hibrit kazandı, İngilizce büyük repoda saf vektör. Araç bunu varsayım olarak sabitlemek
+yerine **her müşteri kod tabanında ölçüp seçmeli** — ölçüm katmanı bu yüzden aracın kendisinin
+bir parçası, yan ürünü değil.
+
+Bir yan bulgu: tokenizer Türkçe harfleri ayraç sayıyordu (`aşımı` → `a` + `m`). Düzeltildi;
+Türkçe yorumlu kod tabanlarında ve Türkçe sorgularda BM25'i doğrudan etkiliyordu.
+
+**Küçük setin çekincesi:** 20 soruda bir soru %5 demek. Yukarıdaki büyük repo ölçümü bu
+setin ne kadar iyimser olduğunu somut olarak gösterdi — %100 recall, gerçek boyutta %85'e indi.
 
 Cevap tarafı 5 soruluk örneklemde: doğruluk %100, dosya kapsamı %100, uydurma referans 0.
 Tam 20 soruluk cevap ölçümü henüz koşulmadı.
@@ -297,7 +330,7 @@ Tam 20 soruluk cevap ölçümü henüz koşulmadı.
 
 Sembol çıkarıcı, `anthropic` SDK'sı üzerinde denendi: **1097 dosya, 4310 parça, 0 hata**.
 Rastgele seçilen 500 parçanın satır aralıkları kaynak dosyalarla karşılaştırıldı, hepsi tuttu.
-Aynı repo uçtan uca indekslenip aranabiliyor. **108 birim testi** var (`tests/`); testler ağ
+Aynı repo uçtan uca indekslenip aranabiliyor. **114 birim testi** var (`tests/`); testler ağ
 erişimi ve API anahtarı olmadan çalışıyor — cevaplama katmanında tool gövdeleri, bağlam kurma
 ve referans doğrulama test ediliyor, tool döngüsünü SDK yürütüyor.
 
@@ -314,7 +347,7 @@ codeqa/
   rerank.py      Voyage rerank-2.5 ile yeniden sıralama
   evaluation.py  soru seti, getirme ve cevap metrikleri
   cli.py         komut satırı arayüzü
-eval/            soru seti
+eval/            soru setleri (küçük + büyük)
 tests/           birim testleri
 data/            indeks ve vektör çıktıları (git'e girmez)
 runs/            ölçüm koşuları (git'e girmez)

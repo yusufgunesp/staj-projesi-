@@ -89,6 +89,55 @@ def test_load_questions_returns_settings(tmp_path):
     assert len(questions) == 1 and settings["repo"] == "/x"
 
 
+def test_load_questions_filters_by_split(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {"id": "d1", "question": "a", "expect_files": ["a.py"], "split": "dev"},
+                    {"id": "t1", "question": "b", "expect_files": ["b.py"], "split": "test"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    dev, _ = load_questions(path, split="dev")
+    test, _ = load_questions(path, split="test")
+    every, _ = load_questions(path, split="all")
+
+    assert [q.id for q in dev] == ["d1"]
+    assert [q.id for q in test] == ["t1"]
+    assert len(every) == 2
+
+
+def test_load_questions_rejects_empty_split(tmp_path):
+    path = tmp_path / "q.json"
+    path.write_text(
+        json.dumps({"questions": [{"id": "d1", "question": "a", "expect_files": ["a.py"]}]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="bölmesinde soru yok"):
+        load_questions(path, split="test")
+
+
+def test_question_defaults_to_dev_split():
+    question = Question.from_dict({"id": "q1", "question": "a", "expect_files": ["a.py"]})
+    assert question.split == "dev"
+
+
+def test_anthropic_question_set_is_valid():
+    """Büyük soru seti bozulmamış ve dev/test dengeli olmalı."""
+    questions, settings = load_questions("eval/questions_anthropic.json")
+    dev = [q for q in questions if q.split == "dev"]
+    test = [q for q in questions if q.split == "test"]
+
+    assert len(questions) == 60
+    assert len(dev) == 40 and len(test) == 20
+    assert all(q.expect_files for q in questions)
+    assert settings["index"] == "data/anthropic.jsonl"
+
+
 def test_project_question_set_is_valid():
     """Repodaki gerçek soru seti bozulmamış olmalı."""
     questions, settings = load_questions("eval/questions.json")

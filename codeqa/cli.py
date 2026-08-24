@@ -205,7 +205,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         load_questions,
     )
 
-    questions, settings = load_questions(Path(args.questions))
+    questions, settings = load_questions(Path(args.questions), split=args.split)
     if args.limit:
         questions = questions[: args.limit]
 
@@ -222,6 +222,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "pool": args.pool or None,
             "k": args.k,
             "questions": len(questions),
+            "split": args.split,
             "model": args.model_name if args.answers else None,
         },
     )
@@ -368,6 +369,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--answers", action="store_true", help="Cevapları da ölç (Claude çağırır, ücretli)"
     )
     eval_parser.add_argument("--limit", type=int, default=0, help="Sadece ilk N soruyu koş")
+    eval_parser.add_argument(
+        "--split",
+        default="all",
+        choices=["all", "dev", "test"],
+        help="Hangi bölme koşulsun. Ayar denemeleri dev'de, rapor test'te.",
+    )
     eval_parser.add_argument("--label", default="baseline", help="Koşu etiketi (dosya adına girer)")
     eval_parser.add_argument(
         "--rerank",

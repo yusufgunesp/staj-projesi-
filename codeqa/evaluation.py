@@ -42,6 +42,10 @@ class Question:
     expect_files: list[str]
     expect_symbols: list[str] = field(default_factory=list)
     note: str = ""
+    #: "dev" ayar yapmak için, "test" rapor etmek için. Aynı sorular üzerinde
+    #: hem ayar yapıp hem rapor etmek, ayarın o setin gürültüsüne uydurulması
+    #: demek — ölçüm iyimser çıkar ve gerçek kullanımda tutmaz.
+    split: str = "dev"
 
     @classmethod
     def from_dict(cls, data: dict) -> Question:
@@ -54,6 +58,7 @@ class Question:
             expect_files=list(data["expect_files"]),
             expect_symbols=list(data.get("expect_symbols", [])),
             note=data.get("note", ""),
+            split=data.get("split", "dev"),
         )
 
 
@@ -159,8 +164,11 @@ class Report:
         return path
 
 
-def load_questions(path: Path) -> tuple[list[Question], dict]:
-    """Soru setini okur. (sorular, ayarlar) döner."""
+def load_questions(path: Path, split: str | None = None) -> tuple[list[Question], dict]:
+    """Soru setini okur. (sorular, ayarlar) döner.
+
+    `split` verilirse sadece o bölme döner ("dev" ya da "test").
+    """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     questions = [Question.from_dict(item) for item in data["questions"]]
 
@@ -168,6 +176,11 @@ def load_questions(path: Path) -> tuple[list[Question], dict]:
     duplicates = {i for i in ids if ids.count(i) > 1}
     if duplicates:
         raise ValueError(f"Yinelenen soru id'si: {', '.join(sorted(duplicates))}")
+
+    if split and split != "all":
+        questions = [q for q in questions if q.split == split]
+        if not questions:
+            raise ValueError(f"'{split}' bölmesinde soru yok")
 
     settings = {key: value for key, value in data.items() if key != "questions"}
     return questions, settings
