@@ -27,6 +27,13 @@ def _write_jsonl(chunks: list[Chunk], output: Path) -> None:
             handle.write(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n")
 
 
+def _write_records(records: list[dict], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         sys.exit(f"İndeks bulunamadı: {path} — önce `python -m codeqa index <repo>` çalıştırın.")
@@ -193,6 +200,46 @@ def cmd_ask(args: argparse.Namespace) -> int:
             f"    token: girdi {answer.usage.get('input_tokens', 0)}, "
             f"çıktı {answer.usage.get('output_tokens', 0)}, önbellekten {cached}"
         )
+    return 0
+
+
+def cmd_contextualize(args: argparse.Namespace) -> int:
+    from .contextual import ContextGenerator
+
+    _load_env()
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("ANTHROPIC_API_KEY tanımlı değil; bağlam üretimi için gerekli.")
+
+    records = _read_jsonl(Path(args.index))
+    generator = ContextGenerator(
+        repo_root=Path(args.repo), model=args.model_name, language=args.language
+    )
+    enriched, generated = generator.enrich(records, progress=True)
+
+    output = Path(args.output or args.index)
+    _write_records(enriched, output)
+    print(f"Parça     : {len(records)}")
+    print(f"Yeni cümle: {generated}")
+    print(f"Çıktı     : {output}")
+    if generator.aborted:
+        print(f"\nKoşu durduruldu: {generator.aborted}")
+        print("Üretilen cümleler önbellekte; sorun giderilince kaldığı yerden devam eder.\n")
+    if generator.failures:
+        print(f"Başarısız : {len(generator.failures)} parça (tekrar çalıştırınca denenir)")
+        for line in generator.failures[:5]:
+            print(f"    {line}")
+    u = generator.usage
+    if u:
+        # Haiku 4.5: girdi $1 / çıktı $5 / önbellek yazma 1.25x / okuma 0.1x (MTok)
+        cost = (u.get("input_tokens", 0) * 1e-6
+                + u.get("cache_creation_input_tokens", 0) * 1.25e-6
+                + u.get("cache_read_input_tokens", 0) * 0.1e-6
+                + u.get("output_tokens", 0) * 5e-6)
+        print(f"Token     : girdi {u.get('input_tokens',0):,}, "
+              f"önbellek yazma {u.get('cache_creation_input_tokens',0):,}, "
+              f"okuma {u.get('cache_read_input_tokens',0):,}, "
+              f"çıktı {u.get('output_tokens',0):,}")
+        print(f"Maliyet   : ~${cost:.2f}")
     return 0
 
 
@@ -390,6 +437,18 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--pool", type=int, default=0,
         help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)")
     eval_parser.set_defaults(func=cmd_eval)
+
+    ctx_parser = subparsers.add_parser(
+        "contextualize", help="Parçalara LLM ile bağlam cümlesi ekle"
+    )
+    ctx_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
+    ctx_parser.add_argument("-o", "--output", default=None, help="Çıktı (varsayılan: yerinde)")
+    ctx_parser.add_argument("--repo", default=".", help="Kaynak dosyaların bulunduğu dizin")
+    ctx_parser.add_argument("--language", default="tr", choices=["tr", "en"], help="Cümle dili")
+    ctx_parser.add_argument(
+        "--model-name", default="claude-haiku-4-5", dest="model_name", help="Kullanılacak model"
+    )
+    ctx_parser.set_defaults(func=cmd_contextualize)
 
     grep_parser = subparsers.add_parser("grep", help="İndekste ham metin ara (embedding gerektirmez)")
     grep_parser.add_argument("query", help="Aranacak metin")

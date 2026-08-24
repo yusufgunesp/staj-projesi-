@@ -320,6 +320,38 @@ bir parçası, yan ürünü değil.
 Bir yan bulgu: tokenizer Türkçe harfleri ayraç sayıyordu (`aşımı` → `a` + `m`). Düzeltildi;
 Türkçe yorumlu kod tabanlarında ve Türkçe sorgularda BM25'i doğrudan etkiliyordu.
 
+#### Contextual retrieval — ölçüldü, beklenenden az işe yaradı
+
+Her parça için Haiku'ya "bu parça dosyanın bütününde ne işe yarıyor" diye Türkçe tek cümle
+yazdırıldı ve embedding'e katıldı (4310 parçanın %96'sı; kalanı kredi bitmesi yüzünden eksik).
+
+60 sorunun tamamında:
+
+| Yöntem | Bağlamsız | Bağlamlı | Fark |
+|--------|-----------|----------|------|
+| Vektör recall@8 | 85% | 87% | +2 puan |
+| Vektör MRR | 0.690 | 0.714 | +0.024 |
+| BM25 recall@8 | 15% | **47%** | **+32 puan** |
+| BM25 MRR | 0.060 | **0.231** | **~4 kat** |
+
+**BM25 için büyük kazanç, vektör için kayda değmez.** Türkçe cümleler indekse Türkçe metin
+koyduğu için BM25'e tutunacak yer verdi — tahmin edilen etkiydi ve gerçekleşti. Ama asıl
+kullanılan yol vektör araması ve orada fark ölçüm gürültüsü mertebesinde.
+
+Maliyet tarafı: yaklaşık 5-7 dolar ve saatlerce koşu, +0.024 MRR için. **Bu repoda contextual
+retrieval masrafını çıkarmıyor.**
+
+Neden Anthropic'in yayınladığı büyük kazançlar burada çıkmadı? Muhtemelen **baseline zaten zayıf
+olmadığı için**: parçalar AST ile bölündüğünden anlamsal bütünlüğünü koruyor ve her parça
+hâlihazırda deterministik bir bağlam etiketi taşıyor (dosya yolu, nitelenmiş ad, tür, modül
+açıklaması). Contextual retrieval'ın asıl değeri sabit uzunlukta bölünmüş, bağlamsız parçalarda
+ortaya çıkıyor. Teknik yanlış değil — bu boru hattı için gereksiz.
+
+Bölmeler arası salınıma dikkat: test bölmesinde vektör recall %85 → %95 görünüyor, dev bölmesinde
+%85 → %82. 20 ve 40 soruluk bölmelerde bu normal; **60 sorunun tamamındaki +2 puan gerçek etkiye
+daha yakın.** Tek bir bölmedeki sıçramayı sonuç diye raporlamak, tam da kaçınmaya çalıştığımız
+hata olurdu.
+
 **Küçük setin çekincesi:** 20 soruda bir soru %5 demek. Yukarıdaki büyük repo ölçümü bu
 setin ne kadar iyimser olduğunu somut olarak gösterdi — %100 recall, gerçek boyutta %85'e indi.
 
@@ -330,7 +362,7 @@ Tam 20 soruluk cevap ölçümü henüz koşulmadı.
 
 Sembol çıkarıcı, `anthropic` SDK'sı üzerinde denendi: **1097 dosya, 4310 parça, 0 hata**.
 Rastgele seçilen 500 parçanın satır aralıkları kaynak dosyalarla karşılaştırıldı, hepsi tuttu.
-Aynı repo uçtan uca indekslenip aranabiliyor. **114 birim testi** var (`tests/`); testler ağ
+Aynı repo uçtan uca indekslenip aranabiliyor. **128 birim testi** var (`tests/`); testler ağ
 erişimi ve API anahtarı olmadan çalışıyor — cevaplama katmanında tool gövdeleri, bağlam kurma
 ve referans doğrulama test ediliyor, tool döngüsünü SDK yürütüyor.
 
@@ -345,6 +377,7 @@ codeqa/
   search.py      BM25, vektör araması, RRF birleştirme
   answer.py      Claude + tool'lar (read_file, search_symbol), referans doğrulama
   rerank.py      Voyage rerank-2.5 ile yeniden sıralama
+  contextual.py  LLM ile bağlam cümlesi üretimi (contextual retrieval)
   evaluation.py  soru seti, getirme ve cevap metrikleri
   cli.py         komut satırı arayüzü
 eval/            soru setleri (küçük + büyük)
