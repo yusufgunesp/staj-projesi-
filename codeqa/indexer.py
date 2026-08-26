@@ -1,9 +1,13 @@
-"""Python kod tabanından sembol çıkarıcı.
+"""Kod tabanından sembol çıkarıcı.
 
 Bir repoyu gezip her fonksiyon, metot ve sınıfı ayrı bir parça (chunk) hâline
-getirir. Metin bölme (fixed-size chunking) yerine AST kullanılıyor; böylece her
-parça anlamlı bir bütün oluyor ve satır aralığı doğru kalıyor — cevaplarda
-`dosya:satır` referansı verebilmenin ön şartı bu.
+getirir. Metin bölme (fixed-size chunking) yerine sözdizimi ağacı kullanılıyor;
+böylece her parça anlamlı bir bütün oluyor ve satır aralığı doğru kalıyor —
+cevaplarda `dosya:satır` referansı verebilmenin ön şartı bu.
+
+Python yerleşik `ast` ile, diğer diller tree-sitter grameriyle ayrıştırılıyor
+(bkz. `languages.py`). Desteklenen diller: Python, C, C++, Java, C#, Go,
+TypeScript, JavaScript.
 """
 
 from __future__ import annotations
@@ -11,6 +15,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from .languages import EXTENSION_MAP
+from .languages import extract_from_source as extract_with_grammar
 from .models import Chunk, IndexStats
 
 #: Taranmayacak dizinler. Bunlar kod tabanının kendisi değil, üretilmiş/çekilmiş dosyalar.
@@ -39,9 +45,17 @@ DEFAULT_EXCLUDES = frozenset(
 
 _FUNC_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
+#: Modül seviyesi bir atamanın parçaya girecek azami uzunluğu. Uzun __all__
+#: listeleri ve gömülü veri tabloları arama değeri taşımadan parçayı şişiriyor.
+MAX_ASSIGNMENT_CHARS = 300
 
-def iter_python_files(root: Path, excludes: frozenset[str] = DEFAULT_EXCLUDES):
-    """`root` altındaki .py dosyalarını, dışlanan dizinlere girmeden sırayla verir."""
+
+#: İndekslenebilen tüm uzantılar: Python (yerleşik `ast`) + tree-sitter dilleri.
+SOURCE_EXTENSIONS: frozenset[str] = frozenset({".py"}) | frozenset(EXTENSION_MAP)
+
+
+def iter_source_files(root: Path, excludes: frozenset[str] = DEFAULT_EXCLUDES):
+    """`root` altındaki kaynak dosyalarını, dışlanan dizinlere girmeden verir."""
     root = root.resolve()
     stack = [root]
     while stack:
@@ -57,7 +71,7 @@ def iter_python_files(root: Path, excludes: frozenset[str] = DEFAULT_EXCLUDES):
                 continue
             if entry.is_dir():
                 stack.append(entry)
-            elif entry.suffix == ".py":
+            elif entry.suffix in SOURCE_EXTENSIONS:
                 yield entry
 
 
@@ -87,10 +101,6 @@ def _signature(node: ast.AST) -> str:
         suffix = f"({', '.join(bases)})" if bases else ""
         return f"class {node.name}{suffix}:"
     return ""
-
-
-def _decorators(node: ast.AST) -> list[str]:
-    return [f"@{ast.unparse(d)}" for d in getattr(node, "decorator_list", [])]
 
 
 def _context(path: str, name: str, kind: str, module_doc: str | None) -> str:
@@ -143,14 +153,17 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
             text=text,
             context=_context(rel_path, name, kind, module_doc),
             signature=_signature(node) or None,
-            docstring=ast.get_docstring(node) if isinstance(node, (ast.ClassDef, *_FUNC_TYPES)) else None,
+            docstring=ast.get_docstring(node)
+            if isinstance(node, (ast.ClassDef, *_FUNC_TYPES))
+            else None,
             parent=parent,
         )
 
-    # 1) Modül başlığı: docstring + import'lar. Dosyanın ne iş yaptığını ve neye
-    #    bağlı olduğunu tek parçada toplar; "bu proje hangi kütüphaneyi kullanıyor"
-    #    tarzı sorular buradan cevaplanıyor.
+    # 1) Modül başlığı: docstring + import'lar + modül seviyesi sabitler.
+    #    Dosyanın ne iş yaptığını, neye bağlı olduğunu ve hangi varsayılan
+    #    değerleri tanımladığını tek parçada toplar.
     imports = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+    assignments = [n for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign))]
     included: list[ast.stmt] = []
     header_parts: list[str] = []
     if module_doc:
@@ -158,6 +171,19 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
         included.append(tree.body[0])  # docstring düğümü her zaman ilk sırada
     header_parts.extend(ast.unparse(n) for n in imports)
     included.extend(imports)
+
+    # Sabitler olmadan "varsayılan zaman aşımı kaç" gibi sorular cevapsız
+    # kalıyor: DEFAULT_TIMEOUT = ... satırı hiçbir parçaya girmiyordu.
+    constant_lines = []
+    for node in assignments:
+        text = ast.unparse(node)
+        if len(text) > MAX_ASSIGNMENT_CHARS:
+            # Büyük veri yapıları (uzun __all__ listeleri, gömülü tablolar)
+            # parçayı şişiriyor ve arama değeri taşımıyor.
+            text = text[:MAX_ASSIGNMENT_CHARS] + "  # ... (kısaltıldı)"
+        constant_lines.append(text)
+        included.append(node)
+    header_parts.extend(constant_lines)
     if header_parts:
         module_name = rel_path.removesuffix(".py").replace("/", ".")
         # Modül parçasının metni birleştirilerek üretiliyor (docstring + import'lar),
@@ -202,10 +228,19 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
 
 
 def index_file(path: Path, root: Path) -> list[Chunk]:
-    """Tek dosyayı indeksler. Yol, repo köküne göre göreli tutulur."""
+    """Tek dosyayı indeksler. Yol, repo köküne göre göreli tutulur.
+
+    Python `ast` ile ayrıştırılıyor — standart kütüphanede var ve tree-sitter'dan
+    daha isabetli sonuç veriyor. Diğer diller tree-sitter grameriyle.
+    """
     rel_path = path.resolve().relative_to(root.resolve()).as_posix()
     source = path.read_bytes().decode("utf-8", errors="replace")
-    return extract_from_source(source, rel_path)
+    if path.suffix == ".py":
+        return extract_from_source(source, rel_path)
+    spec = EXTENSION_MAP.get(path.suffix)
+    if spec is None:
+        return []
+    return extract_with_grammar(source, rel_path, spec)
 
 
 def index_repo(
@@ -218,7 +253,7 @@ def index_repo(
 
     chunks: list[Chunk] = []
     stats = IndexStats()
-    for file_path in iter_python_files(root, excludes):
+    for file_path in iter_source_files(root, excludes):
         stats.files_scanned += 1
         try:
             file_chunks = index_file(file_path, root)

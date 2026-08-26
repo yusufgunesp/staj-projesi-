@@ -69,8 +69,14 @@ class RetrievalResult:
     question_id: str
     found: bool
     rank: int | None  # doğru parçanın ilk göründüğü sıra (1'den başlar)
-    symbols_found: bool
+    #: Sorunun sembol beklentisi yoksa None. Bool olsaydı beklentisi olmayan
+    #: sorular "bulundu" sayılıp metriği şişirirdi — 60 sorunun 50'si böyle.
+    symbols_found: bool | None
     returned: list[str]  # getirilen konumlar, hata ayıklama için
+    #: Beklenen dosyaların kaçı ilk k'da bulundu (0..1). Akış sorularında asıl
+    #: ölçüt bu: `found` çok dosyalı soruda üçten birini bulmakla da doğru
+    #: oluyor, oysa cevabın tamamı için hepsi gerekiyor.
+    coverage: float = 0.0
 
     @property
     def reciprocal_rank(self) -> float:
@@ -108,11 +114,27 @@ class Report:
 
     @property
     def symbol_recall(self) -> float:
-        """Sadece sembol beklentisi olan sorular üzerinden."""
+        """Sadece sembol beklentisi olan sorular üzerinden.
+
+        Beklentisi olmayan sorular hesaba katılırsa metrik anlamsızlaşıyor:
+        60 sorunun 50'sinde sembol beklentisi yok, hepsi bedava "bulundu"
+        sayılırdı.
+        """
         scored = [r for r in self.retrieval if r.symbols_found is not None]
         if not scored:
             return 0.0
         return sum(bool(r.symbols_found) for r in scored) / len(scored)
+
+    @property
+    def retrieval_coverage(self) -> float:
+        """Beklenen dosyaların ortalama kaçı getirildi.
+
+        Tek konumlu sorularda `recall` ile aynı şeyi söylüyor; çok dosyaya
+        yayılan akış sorularında ayrışıyor ve asıl bilgiyi bu veriyor.
+        """
+        if not self.retrieval:
+            return 0.0
+        return sum(r.coverage for r in self.retrieval) / len(self.retrieval)
 
     @property
     def mrr(self) -> float:
@@ -145,6 +167,7 @@ class Report:
             "settings": self.settings,
             "metrics": {
                 "recall": round(self.recall, 4),
+                "retrieval_coverage": round(self.retrieval_coverage, 4),
                 "symbol_recall": round(self.symbol_recall, 4),
                 "mrr": round(self.mrr, 4),
                 "answer_accuracy": round(self.answer_accuracy, 4),
@@ -201,7 +224,7 @@ def evaluate_retrieval(
                 rank = position
                 break
 
-        symbols_found = True
+        symbols_found = None
         if question.expect_symbols:
             names = {hit.name for hit in hits}
             # Nitelenmiş ad da sayılmalı: `create` beklenirken `Order.create` geldiyse bulundu.
@@ -210,6 +233,7 @@ def evaluate_retrieval(
                 for symbol in question.expect_symbols
             )
 
+        returned_paths = {hit.record["path"] for hit in hits}
         results.append(
             RetrievalResult(
                 question_id=question.id,
@@ -217,12 +241,15 @@ def evaluate_retrieval(
                 rank=rank,
                 symbols_found=symbols_found,
                 returned=[hit.location for hit in hits],
+                coverage=len(expected & returned_paths) / len(expected) if expected else 0.0,
             )
         )
     return results
 
 
-def evaluate_answers(answerer, questions: list[Question], progress: bool = False) -> list[AnswerResult]:
+def evaluate_answers(
+    answerer, questions: list[Question], progress: bool = False
+) -> list[AnswerResult]:
     """Modelin doğru dosyaya referans verip vermediğini ölçer. Claude çağırır."""
     results: list[AnswerResult] = []
     for index, question in enumerate(questions, start=1):
@@ -258,10 +285,11 @@ def format_report(report: Report, questions: list[Question]) -> str:
         for result in report.retrieval:
             mark = "✓" if result.found else "✗"
             rank = f"sıra {result.rank}" if result.rank else "bulunamadı"
-            symbol = "" if result.symbols_found else "  (sembol eksik)"
+            symbol = "  (sembol eksik)" if result.symbols_found is False else ""
             lines.append(f"  {mark} {result.question_id}: {rank}{symbol}")
         lines.append("")
         lines.append(f"  recall@k     : {report.recall:.0%}")
+        lines.append(f"  kapsam       : {report.retrieval_coverage:.0%}")
         lines.append(f"  sembol recall: {report.symbol_recall:.0%}")
         lines.append(f"  MRR          : {report.mrr:.3f}")
         lines.append("")

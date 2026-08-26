@@ -24,6 +24,90 @@ from .embeddings import Embedder, tokenize
 #: yumuşatıp alt sıralardaki uzlaşmayı da hesaba katıyor.
 RRF_K = 60
 
+#: Alaka sıralamasının arkasına eklenen "henüz görülmemiş dosya" slotu sayısı.
+#:
+#: **Ölçüldü ve işe yaradı.** Sorun şuydu: arama doğru bölgeyi buluyor, sonra o
+#: bölgeyi tekrar tekrar getiriyor. Akış setinde ilk 8 sonuçta ortalama yalnızca
+#: 3,1 farklı dosya vardı; 160 slotun 98'i zaten listede olan bir dosyanın
+#: tekrarıydı ve zincirin ikinci halkasına yer kalmıyordu.
+#:
+#: Önce sert kota denendi (dosya başına en fazla 1 parça). Kapsamı artırdı ama
+#: **sembol isabetini 0,778'den 0,444'e düşürdü**: iki ilgili parça gerçekten
+#: aynı dosyada olabiliyor (sync/async ikizleri, decoder + accumulator) ve kota
+#: bunlardan birini kesiyordu. Kapsam metriği dosya çeşitliliğini ödüllendirdiği
+#: için müdahaleyi kendi kendine haklı çıkarıyordu — sembol isabeti bu döngüyü
+#: kıran ölçüt oldu. Yumuşak ceza da çare olmadı: RRF skorları 1/(60+sıra)
+#: olduğu için fazla sıkışık, 0,8'in altındaki her çarpan sert kotaya dönüşüyor.
+#:
+#: Çalışan yaklaşım hiçbir şeyi elemiyor, yalnızca ekliyor: ilk k sonuç
+#: dokunulmadan kalıyor, arkasına henüz temsil edilmemiş dosyaların en iyi
+#: parçası ekleniyor. Dev bölmesinde (voyage, vector, k=8 + 4 slot = 12 parça):
+#:
+#: ==========================  ===========  ============  ========
+#: yapılandırma                akış kapsam  kolay kapsam  sembol
+#: ==========================  ===========  ============  ========
+#: düz top-8 (önceki)          0,750        0,925         0,778
+#: sert kota=1                 0,867        0,950         0,444
+#: düz top-12 (kontrol)        0,750        0,950         0,778
+#: k=8 + 4 slot (bu)           0,833        0,975         0,778
+#: ==========================  ===========  ============  ========
+#:
+#: Kontrol satırı önemli: sadece daha çok parça vermek akış kapsamını hiç
+#: kıpırdatmıyor (0,750). Kazanç parça sayısından değil çeşitlilikten geliyor.
+#: Maliyeti modele giden parça sayısının 8'den 12'ye çıkması.
+#:
+#: Kapatmak için `diversity_slots=0`.
+DIVERSITY_SLOTS = 4
+
+#: Yeni dosya ararken aday listesinde ne kadar derine inileceği. Ölçüm bu
+#: derinlikte yapıldı; daha sığ tarama zincirin uzak halkalarını kaçırıyor.
+DIVERSITY_SCAN = 60
+
+#: Sadece alan tanımından ibaret sınıflara uygulanan ağırlık. Bunlar üretilmiş
+#: tip tanımları (TypedDict, model sınıfları) — sorunun kelimelerini içeriyorlar
+#: ama mantık taşımıyorlar.
+#:
+#: **Ölçüldü ve işe yaramadı.** anthropic SDK'sında (parçaların %42'si `types/`
+#: altında) 60 soruluk sette MRR 0.761 → 0.754, recall değişmedi. Kod duruyor
+#: çünkü fikir mantıklı ve başka bir repoda karşılığı olabilir, ama varsayılan
+#: **kapalı**: ölçülmüş faydası olmayan bir karmaşıklık açık gelmemeli.
+#: Açmak için `HybridSearch(..., weigh_chunks=True)`.
+TYPE_ONLY_WEIGHT = 0.4
+
+
+def chunk_weight(record: dict) -> float:
+    """Parçanın bilgi yoğunluğuna göre ağırlık.
+
+    Metot içermeyen bir sınıf parçası, alan listesinden ibaret demektir.
+    `def` geçip geçmediğine bakmak, üretilmiş dosya işaretine bakmaktan
+    sağlam: bu SDK'da dosyaların %92'si "generated" işaretli, `_client.py`
+    ve `_constants.py` dahil — yani o işaret ayırt edici değil.
+    """
+    if record.get("kind") == "class" and "def " not in record.get("text", ""):
+        return TYPE_ONLY_WEIGHT
+    return 1.0
+
+
+def extend_with_unseen_files(ranked: list, path_of, k: int, slots: int, scan: int) -> list:
+    """İlk k sonucun arkasına, henüz temsil edilmemiş dosyaların en iyi parçasını ekler.
+
+    Eleme yok: ilk k olduğu gibi kalıyor, liste yalnızca uzuyor. Sert kotanın
+    aksine bu yüzden sembol isabetini düşürmüyor — aynı dosyadaki ikinci ilgili
+    parça yerinde duruyor, sadece arkasına başka dosyalar geliyor.
+    """
+    selected = list(ranked[:k])
+    if slots <= 0:
+        return selected
+    seen = {path_of(item) for item in selected}
+    for item in ranked[k:scan]:
+        if len(selected) >= k + slots:
+            break
+        path = path_of(item)
+        if path in seen:
+            continue
+        seen.add(path)
+        selected.append(item)
+    return selected
 
 @dataclass
 class SearchHit:
@@ -125,6 +209,8 @@ class HybridSearch:
         reranker=None,
         weights: dict[str, float] | None = None,
         pool_size: int | None = None,
+        weigh_chunks: bool = False,
+        diversity_slots: int = DIVERSITY_SLOTS,
     ):
         self.records = records
         self.bm25 = BM25Search(records)
@@ -132,6 +218,8 @@ class HybridSearch:
         self.reranker = reranker
         self.weights = weights or {}
         self.pool_size = pool_size
+        self.weigh_chunks = weigh_chunks
+        self.diversity_slots = diversity_slots
 
     def _candidates(self, query: str, pool: int, mode: str):
         if mode == "bm25":
@@ -145,21 +233,44 @@ class HybridSearch:
             }
         else:
             raise ValueError(f"Bilinmeyen arama modu: {mode} (hybrid | vector | bm25)")
-        return reciprocal_rank_fusion(rankings, pool, weights=self.weights)
+        fused = reciprocal_rank_fusion(rankings, pool, weights=self.weights)
+        if not self.weigh_chunks:
+            return fused
+
+        # Parça ağırlığı birleştirmeden sonra uygulanıyor: her iki yöntemin de
+        # sıralamasına girmiş olsa bile düşük bilgi yoğunluklu parça geriye
+        # düşsün. Sıra yeniden kuruluyor.
+        weighted = [
+            (index, score * chunk_weight(self.records[index]), sources)
+            for index, score, sources in fused
+        ]
+        weighted.sort(key=lambda item: -item[1])
+        return weighted
 
     def search(
         self, query: str, k: int = 5, mode: str = "hybrid", rerank: bool | None = None
     ) -> list[SearchHit]:
         # Birleştirme öncesi her yöntemden daha fazla aday alınıyor; sadece k
-        # tane alınsa iki listenin kesişimi çok küçük kalıyor.
+        # tane alınsa iki listenin kesişimi çok küçük kalıyor. Çeşitlilik
+        # slotları açıkken havuz en az tarama derinliği kadar: yeni dosyalar
+        # listenin alt sıralarında duruyor, havuz sığ kalırsa hiç görülmüyorlar.
         pool = self.pool_size or max(k * 4, 20)
+        if self.diversity_slots > 0:
+            pool = max(pool, DIVERSITY_SCAN)
         use_rerank = self.reranker is not None if rerank is None else rerank
         candidates = self._candidates(query, pool, mode)
 
         if not use_rerank or self.reranker is None or not candidates:
+            selected = extend_with_unseen_files(
+                candidates,
+                lambda item: self.records[item[0]]["path"],
+                k,
+                self.diversity_slots,
+                DIVERSITY_SCAN,
+            )
             return [
                 SearchHit(record=self.records[index], score=score, sources=sources)
-                for index, score, sources in candidates[:k]
+                for index, score, sources in selected
             ]
 
         # Reranker'a parça metniyle birlikte konum etiketi de gidiyor: dosya yolu
@@ -170,8 +281,11 @@ class HybridSearch:
         ]
         sources_by_position = {position: item[2] for position, item in enumerate(candidates)}
 
+        # Reranker'a havuzun tamamı gidiyor, çeşitlilik ondan sonra ekleniyor:
+        # önce alaka sırası düzelsin, yeni dosyalar düzelmiş sıranın arkasına
+        # eklensin. top_k=k verilseydi eklenecek aday kalmazdı.
         hits: list[SearchHit] = []
-        for position, score in self.reranker.rerank(query, documents, top_k=k):
+        for position, score in self.reranker.rerank(query, documents, top_k=len(documents)):
             record_index = candidates[position][0]
             hits.append(
                 SearchHit(
@@ -180,4 +294,6 @@ class HybridSearch:
                     sources=sources_by_position[position] + ("rerank",),
                 )
             )
-        return hits
+        return extend_with_unseen_files(
+            hits, lambda hit: hit.record["path"], k, self.diversity_slots, DIVERSITY_SCAN
+        )

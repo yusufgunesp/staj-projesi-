@@ -3,7 +3,7 @@
 from .answer import Answer, CodebaseAnswerer
 from .docs import extract_from_markdown, index_docs
 from .embeddings import Embedder, EmbeddingCache, embed_records, get_embedder, tokenize
-from .indexer import extract_from_source, index_file, index_repo, iter_python_files
+from .indexer import extract_from_source, index_file, index_repo, iter_source_files
 from .models import Chunk, IndexStats
 from .search import HybridSearch, SearchHit
 
@@ -23,6 +23,6 @@ __all__ = [
     "index_docs",
     "index_file",
     "index_repo",
-    "iter_python_files",
+    "iter_source_files",
     "tokenize",
 ]

@@ -1,0 +1,127 @@
+{
+  "_aciklama": "ZOR SET — akış (multi-hop) soruları. Mevcut 60 soruluk set tek konumlu 'X nerede' tipindeydi ve cevap doğruluğu %100'e vurdu, yani iyileştirme ölçemez hâle geldi. Bu set projenin asıl vaadini ölçüyor: bir akışın nerede başlayıp nereden geçtiğini takip etmek. Her sorunun cevabı 2-4 dosyaya yayılıyor; `covered` metriği kaç tanesine ulaşıldığını ölçüyor. Beklenen dosyalar kodda aranarak doğrulandı.",
+  "repo": ".venv/lib/python3.14/site-packages/anthropic",
+  "index": "data/anthropic_ctx.jsonl",
+  "questions": [
+    {
+      "id": "a01", "split": "dev",
+      "question": "Bir mesaj isteği gönderildiğinde istek nesnesi nerede kuruluyor ve hangi başlıklar ekleniyor?",
+      "expect_files": ["_base_client.py", "_client.py"],
+      "note": "_build_request + auth_headers/default_headers"
+    },
+    {
+      "id": "a02", "split": "dev",
+      "question": "Bir istek 429 alırsa ne oluyor, ne kadar bekleniyor ve kaç kez deneniyor?",
+      "expect_files": ["_base_client.py", "_constants.py"],
+      "note": "_should_retry + _calculate_retry_timeout + DEFAULT_MAX_RETRIES"
+    },
+    {
+      "id": "a03", "split": "dev",
+      "question": "Sunucudan gelen ham baytlar nasıl olaya, olaylar nasıl tam mesaja dönüşüyor?",
+      "expect_files": ["_streaming.py", "lib/streaming/_messages.py"],
+      "note": "SSEDecoder.decode -> Stream.__stream__ -> accumulate_event"
+    },
+    {
+      "id": "a04", "split": "dev",
+      "question": "Bir dosya yüklendiğinde içerik hangi aşamalardan geçip isteğe konuyor?",
+      "expect_files": ["resources/beta/files.py", "_files.py", "_base_client.py"],
+      "note": "files.upload -> to_httpx_files -> _serialize_multipartform"
+    },
+    {
+      "id": "a05", "split": "dev",
+      "question": "Sayfalı bir listede sonraki sayfaya nasıl geçiliyor, imleç nereden okunuyor?",
+      "expect_files": ["_base_client.py"],
+      "note": "has_next_page -> next_page_info -> get_next_page; tek dosyada ama üç adım"
+    },
+    {
+      "id": "a06", "split": "dev",
+      "question": "API anahtarı yoksa kimlik bilgisi nereden bulunuyor ve isteğe nasıl ekleniyor?",
+      "expect_files": ["lib/credentials/_providers.py", "lib/credentials/_auth.py", "_client.py"],
+      "note": "sağlayıcı zinciri -> AccessTokenAuth -> auth_headers"
+    },
+    {
+      "id": "a07", "split": "dev",
+      "question": "Model isteği reddettiğinde hangi adımlarla başka modele geçiliyor ve kredi jetonu nerede kullanılıyor?",
+      "expect_files": ["lib/middleware/_fallbacks.py"],
+      "note": "refusal tespiti -> _credit_token_param -> yeniden istek"
+    },
+    {
+      "id": "a08", "split": "dev",
+      "question": "Tool runner bir tool çağrısı gördüğünde hangi adımları izleyip döngüyü nasıl sürdürüyor?",
+      "expect_files": ["lib/tools/_beta_runner.py", "lib/tools/_beta_functions.py"],
+      "note": "__next__ -> tool çalıştırma -> generate_tool_call_response"
+    },
+    {
+      "id": "a09", "split": "dev",
+      "question": "Ajanın çalıştırdığı bir kabuk komutu hangi kontrollerden geçiyor?",
+      "expect_files": ["lib/tools/agent_toolset.py"],
+      "note": "BashSession -> resolve_path -> çalıştırma"
+    },
+    {
+      "id": "a10", "split": "dev",
+      "question": "Hafıza aracına yazma isteği geldiğinde yol doğrulaması ve dosya yazımı nasıl yapılıyor?",
+      "expect_files": ["lib/tools/_beta_builtin_memory_tool.py"],
+      "note": "komut dağıtımı -> _validate_no_symlink_escape -> _atomic_write_file"
+    },
+    {
+      "id": "a11", "split": "test",
+      "question": "Bir HTTP hatası geldiğinde yanıttan istisnaya kadar hangi adımlar işliyor?",
+      "expect_files": ["_base_client.py", "_exceptions.py"],
+      "note": "_process_response -> _make_status_error_from_response -> istisna sınıfı"
+    },
+    {
+      "id": "a12", "split": "test",
+      "question": "Yanıt gövdesi hangi aşamalarda ayrıştırılıp tip nesnesine dönüşüyor?",
+      "expect_files": ["_base_client.py", "_response.py"],
+      "note": "_process_response -> APIResponse.parse -> _process_response_data"
+    },
+    {
+      "id": "a13", "split": "test",
+      "question": "Bedrock istemcisi kurulduğunda yapılandırma ve kimlik doğrulama nasıl çözümleniyor?",
+      "expect_files": ["lib/bedrock/_mantle.py", "lib/aws/_credentials.py"],
+      "note": "_resolve_mantle_config -> AWS kimlik bilgileri"
+    },
+    {
+      "id": "a14", "split": "test",
+      "question": "Google Cloud üzerinde bir istek gönderilirken temel adres ve proje kimliği nasıl belirleniyor?",
+      "expect_files": ["lib/google_cloud/_client.py"],
+      "note": "_resolve_base_url -> _project_from_credentials"
+    },
+    {
+      "id": "a15", "split": "test",
+      "question": "Toplu iş oluşturulduktan sonra sonuçlara ulaşana kadar hangi çağrılar yapılıyor?",
+      "expect_files": ["resources/messages/batches.py"],
+      "note": "create -> retrieve -> results"
+    },
+    {
+      "id": "a16", "split": "test",
+      "question": "Oturum içindeki bir tool çağrısı istemciye nasıl ulaşıp sonucu nasıl geri dönüyor?",
+      "expect_files": ["lib/tools/_beta_session_runner.py"],
+      "note": "DispatchedToolCall -> _build_result_event"
+    },
+    {
+      "id": "a17", "split": "test",
+      "question": "Akış sırasında bağlantı kapanırsa kaynaklar nasıl serbest bırakılıyor?",
+      "expect_files": ["_streaming.py"],
+      "note": "__exit__ -> close -> response.close"
+    },
+    {
+      "id": "a18", "split": "test",
+      "question": "Sorgu parametreleri iç içe yapılardan URL dizesine nasıl dönüşüyor?",
+      "expect_files": ["_qs.py"],
+      "note": "stringify -> stringify_items -> _stringify_item"
+    },
+    {
+      "id": "a19", "split": "test",
+      "question": "Beta bir uç noktaya istek atarken beta başlıkları ve istek seçenekleri nerede birleşiyor?",
+      "expect_files": ["resources/beta/messages/messages.py", "_base_client.py"],
+      "note": "kaynak metodu betas'ı birleştiriyor -> _build_request başlıkları koyuyor"
+    },
+    {
+      "id": "a20", "split": "test",
+      "question": "Webhook geldiğinde imza doğrulamasından olay nesnesine kadar ne oluyor?",
+      "expect_files": ["resources/beta/webhooks.py"],
+      "note": "unwrap -> imza doğrulama -> olay ayrıştırma"
+    }
+  ]
+}

@@ -1,69 +1,528 @@
 {
-  "_aciklama": "anthropic Python SDK üzerinde 60 soruluk ölçüm seti. Her sorunun cevabının hangi dosyada olduğu, kod içinde aranarak doğrulandı. dev/test ayrımı var: ayarlar (RRF ağırlıkları, havuz boyutu, prompt) yalnızca dev üzerinde yapılır, rapor edilen sayı test üzerinden alınır. Aynı set üzerinde hem ayar yapıp hem rapor etmek overfitting olur.",
+  "_aciklama": "anthropic Python SDK üzerinde 60 soruluk ölçüm seti. Her sorunun cevabının hangi dosyada olduğu, kod içinde aranarak doğrulandı. dev/test ayrımı var: ayarlar (RRF ağırlıkları, havuz boyutu, prompt) yalnızca dev üzerinde yapılır, rapor edilen sayı test üzerinden alınır. Aynı set üzerinde hem ayar yapıp hem rapor etmek overfitting olur. Bazı sorular ilk ölçümden sonra düzeltildi: cevabı birden fazla dosyada olan sorulara ikinci dosya eklendi, tek doğru cevabı olmayan bir soru belirli hâle getirildi.",
   "repo": ".venv/lib/python3.14/site-packages/anthropic",
   "index": "data/anthropic.jsonl",
-
   "questions": [
-    {"id": "d01", "split": "dev", "question": "İstek kaç kez yeniden deneniyor, varsayılan değer nerede tanımlı?", "expect_files": ["_constants.py"]},
-    {"id": "d02", "split": "dev", "question": "Hangi HTTP durum kodlarında yeniden deneme yapılıyor?", "expect_files": ["_base_client.py"], "expect_symbols": ["BaseClient._should_retry"]},
-    {"id": "d03", "split": "dev", "question": "Sunucu ne kadar bekleneceğini söylerse buna uyuluyor mu?", "expect_files": ["_base_client.py"], "note": "retry-after ve retry-after-ms başlıkları"},
-    {"id": "d04", "split": "dev", "question": "Varsayılan zaman aşımı süresi kaç?", "expect_files": ["_constants.py"]},
-    {"id": "d05", "split": "dev", "question": "Sunucudan gelen olay akışı nasıl ayrıştırılıyor?", "expect_files": ["_streaming.py"], "expect_symbols": ["SSEDecoder.decode"]},
-    {"id": "d06", "split": "dev", "question": "HTTP durum kodu hangi istisna sınıfına dönüştürülüyor?", "expect_files": ["_base_client.py"]},
-    {"id": "d07", "split": "dev", "question": "429 hatası için hangi istisna sınıfı var?", "expect_files": ["_exceptions.py"]},
-    {"id": "d08", "split": "dev", "question": "Dosya yükleme isteği nasıl kodlanıyor?", "expect_files": ["_base_client.py"], "expect_symbols": ["BaseClient._serialize_multipartform"]},
-    {"id": "d09", "split": "dev", "question": "Bir sonraki sayfa var mı nasıl anlaşılıyor?", "expect_files": ["_base_client.py"], "expect_symbols": ["BasePage.has_next_page"]},
-    {"id": "d10", "split": "dev", "question": "Webhook imzası nasıl doğrulanıyor?", "expect_files": ["resources/beta/webhooks.py"]},
-    {"id": "d11", "split": "dev", "question": "Ajanın çalıştırdığı komutlar hangi dizine hapsediliyor?", "expect_files": ["lib/tools/agent_toolset.py"], "expect_symbols": ["resolve_path"]},
-    {"id": "d12", "split": "dev", "question": "Tool döngüsü ne zaman duruyor?", "expect_files": ["lib/tools/_beta_runner.py"]},
-    {"id": "d13", "split": "dev", "question": "Akış halinde gelen parçalar nasıl birleştirilip tam mesaj oluyor?", "expect_files": ["lib/streaming/_messages.py"], "expect_symbols": ["accumulate_event"]},
-    {"id": "d14", "split": "dev", "question": "Model isteği reddederse başka bir modele nasıl geçiliyor?", "expect_files": ["lib/middleware/_fallbacks.py"]},
-    {"id": "d15", "split": "dev", "question": "Hafıza dosyalarında sembolik link ile dışarı çıkma engelleniyor mu?", "expect_files": ["lib/tools/_beta_builtin_memory_tool.py"]},
-    {"id": "d16", "split": "dev", "question": "Kimlik bilgileri diskteki hangi dosyadan okunuyor?", "expect_files": ["lib/credentials/_providers.py"]},
-    {"id": "d17", "split": "dev", "question": "Amazon Bedrock istemcisi nerede tanımlı?", "expect_files": ["lib/bedrock/_mantle.py"]},
-    {"id": "d18", "split": "dev", "question": "Google Cloud'da proje kimliği nereden çıkarılıyor?", "expect_files": ["lib/google_cloud/_client.py"]},
-    {"id": "d19", "split": "dev", "question": "Sorgu dizesinde diziler nasıl biçimlendiriliyor?", "expect_files": ["_qs.py"]},
-    {"id": "d20", "split": "dev", "question": "Yüklenecek dosyalar httpx formatına nasıl çevriliyor?", "expect_files": ["_files.py"], "expect_symbols": ["to_httpx_files"]},
-    {"id": "d21", "split": "dev", "question": "Toplu iş sonuçları nasıl alınıyor?", "expect_files": ["resources/messages/batches.py"]},
-    {"id": "d22", "split": "dev", "question": "İstek göndermeden token sayısı nasıl hesaplanıyor?", "expect_files": ["resources/messages/messages.py"]},
-    {"id": "d23", "split": "dev", "question": "API anahtarı hangi HTTP başlığına konuyor?", "expect_files": ["_client.py"]},
-    {"id": "d24", "split": "dev", "question": "OAuth token ile kimlik doğrulama nasıl yapılıyor?", "expect_files": ["_client.py"], "note": "_bearer_auth"},
-    {"id": "d25", "split": "dev", "question": "Yanıtın ham HTTP başlıklarına nasıl erişilir?", "expect_files": ["_response.py"]},
-    {"id": "d26", "split": "dev", "question": "İkili içerik dosyaya nasıl yazdırılıyor?", "expect_files": ["_response.py"], "expect_symbols": ["BinaryAPIResponse.write_to_file"]},
-    {"id": "d27", "split": "dev", "question": "İstek kimliği yanıtın neresinden okunuyor?", "expect_files": ["_response.py"]},
-    {"id": "d28", "split": "dev", "question": "İstemcinin ayarları değiştirilmiş bir kopyası nasıl üretiliyor?", "expect_files": ["_client.py"], "expect_symbols": ["Anthropic.copy"]},
-    {"id": "d29", "split": "dev", "question": "Microsoft Foundry desteği nerede?", "expect_files": ["lib/foundry.py"]},
-    {"id": "d30", "split": "dev", "question": "Tool çalıştırırken hata olursa modele nasıl bildiriliyor?", "expect_files": ["lib/tools/_beta_functions.py"], "note": "ToolError"},
-    {"id": "d31", "split": "dev", "question": "Oturum içindeki tool çağrıları nasıl yürütülüyor?", "expect_files": ["lib/tools/_beta_session_runner.py"]},
-    {"id": "d32", "split": "dev", "question": "Beta özellikleri için istek başlıkları nasıl ekleniyor?", "expect_files": ["resources/beta/files.py"]},
-    {"id": "d33", "split": "dev", "question": "Ajan oturumu oluşturma isteği nerede yapılıyor?", "expect_files": ["resources/beta/sessions/sessions.py"]},
-    {"id": "d34", "split": "dev", "question": "Kayıtlı ajan yapılandırması oluşturma nerede?", "expect_files": ["resources/beta/agents/agents.py"]},
-    {"id": "d35", "split": "dev", "question": "Kimlik bilgisi kasası işlemleri nerede tanımlı?", "expect_files": ["resources/beta/vaults/vaults.py"]},
-    {"id": "d36", "split": "dev", "question": "Zamanlanmış çalıştırmalar hangi kaynak üzerinden yönetiliyor?", "expect_files": ["resources/beta/deployments.py"]},
-    {"id": "d37", "split": "dev", "question": "Kalıcı hafıza deposu işlemleri nerede?", "expect_files": ["resources/beta/memory_stores/memory_stores.py"]},
-    {"id": "d38", "split": "dev", "question": "Kendi altyapında çalışan iş kuyruğu nasıl yoklanıyor?", "expect_files": ["resources/beta/environments/work.py"]},
-    {"id": "d39", "split": "dev", "question": "Beceri (skill) sürümleri nasıl yönetiliyor?", "expect_files": ["resources/beta/skills/skills.py"]},
-    {"id": "d40", "split": "dev", "question": "Asenkron akışta olaylar nasıl tüketiliyor?", "expect_files": ["_streaming.py"]},
-
-    {"id": "t01", "split": "test", "question": "Bağlantı hatası ile zaman aşımı hatası birbirinden nasıl ayrılıyor?", "expect_files": ["_exceptions.py"]},
-    {"id": "t02", "split": "test", "question": "İsteğin gövdesi ve başlıkları nerede birleştirilip hazırlanıyor?", "expect_files": ["_base_client.py"], "expect_symbols": ["BaseClient._build_request"]},
-    {"id": "t03", "split": "test", "question": "Temel adres sonunda eğik çizgi olmasa ne oluyor?", "expect_files": ["_base_client.py"], "note": "_enforce_trailing_slash"},
-    {"id": "t04", "split": "test", "question": "Yanıt gövdesinin akış halinde mi okunacağına nasıl karar veriliyor?", "expect_files": ["_base_client.py"]},
-    {"id": "t05", "split": "test", "question": "Sayfalar arasında otomatik gezinme nasıl çalışıyor?", "expect_files": ["_base_client.py"]},
-    {"id": "t06", "split": "test", "question": "Olay akışındaki ham satırlar nasıl parçalara bölünüyor?", "expect_files": ["_streaming.py"]},
-    {"id": "t07", "split": "test", "question": "Akış nesnesi kapatıldığında ne oluyor?", "expect_files": ["_streaming.py"]},
-    {"id": "t08", "split": "test", "question": "Yanıt gövdesi beklenen şemaya uymazsa hangi hata veriliyor?", "expect_files": ["_exceptions.py"]},
-    {"id": "t09", "split": "test", "question": "Beta uç noktalarına toplu istek gönderme nerede?", "expect_files": ["resources/beta/messages/batches.py"]},
-    {"id": "t10", "split": "test", "question": "Çıktı biçimi ile yapılandırma çakışırsa ne oluyor?", "expect_files": ["resources/beta/messages/messages.py"], "note": "_validate_output_config_conflict"},
-    {"id": "t11", "split": "test", "question": "Ortam değişkeninden gelen token nasıl kullanılıyor?", "expect_files": ["lib/credentials/_providers.py"]},
-    {"id": "t12", "split": "test", "question": "Model isteği reddettiğinde kredi jetonu nasıl kullanılıyor?", "expect_files": ["lib/middleware/_fallbacks.py"]},
-    {"id": "t13", "split": "test", "question": "Kabuk komutu çalıştıran oturum nesnesi nerede?", "expect_files": ["lib/tools/agent_toolset.py"], "note": "BashSession"},
-    {"id": "t14", "split": "test", "question": "Hafıza dosyası yazılırken yarıda kesilme riski nasıl önleniyor?", "expect_files": ["lib/tools/_beta_builtin_memory_tool.py"], "note": "_atomic_write_file"},
-    {"id": "t15", "split": "test", "question": "Beta akış mesajlarının biriktirilmesi nerede yapılıyor?", "expect_files": ["lib/streaming/_beta_messages.py"]},
-    {"id": "t16", "split": "test", "question": "Eski sürüm yanıt nesnesine nasıl dönüştürülüyor?", "expect_files": ["_legacy_response.py"]},
-    {"id": "t17", "split": "test", "question": "Google Cloud istemcisinde temel adres nasıl belirleniyor?", "expect_files": ["lib/google_cloud/_client.py"]},
-    {"id": "t18", "split": "test", "question": "Bedrock yapılandırması nasıl çözümleniyor?", "expect_files": ["lib/bedrock/_mantle.py"]},
-    {"id": "t19", "split": "test", "question": "Dosya yükleme kaynağı hangi beta başlığını gerektiriyor?", "expect_files": ["resources/beta/files.py"]},
-    {"id": "t20", "split": "test", "question": "Kasa içindeki tekil sırlar nasıl yönetiliyor?", "expect_files": ["resources/beta/vaults/credentials.py"]}
+    {
+      "id": "d01",
+      "split": "dev",
+      "question": "İstek kaç kez yeniden deneniyor, varsayılan değer nerede tanımlı?",
+      "expect_files": [
+        "_constants.py"
+      ]
+    },
+    {
+      "id": "d02",
+      "split": "dev",
+      "question": "Hangi HTTP durum kodlarında yeniden deneme yapılıyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "expect_symbols": [
+        "BaseClient._should_retry"
+      ]
+    },
+    {
+      "id": "d03",
+      "split": "dev",
+      "question": "Sunucu ne kadar bekleneceğini söylerse buna uyuluyor mu?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "note": "retry-after ve retry-after-ms başlıkları"
+    },
+    {
+      "id": "d04",
+      "split": "dev",
+      "question": "Varsayılan zaman aşımı süresi kaç?",
+      "expect_files": [
+        "_constants.py"
+      ]
+    },
+    {
+      "id": "d05",
+      "split": "dev",
+      "question": "Sunucudan gelen olay akışı nasıl ayrıştırılıyor?",
+      "expect_files": [
+        "_streaming.py"
+      ],
+      "expect_symbols": [
+        "SSEDecoder.decode"
+      ]
+    },
+    {
+      "id": "d06",
+      "split": "dev",
+      "question": "HTTP durum kodu hangi istisna sınıfına dönüştürülüyor?",
+      "expect_files": [
+        "_base_client.py"
+      ]
+    },
+    {
+      "id": "d07",
+      "split": "dev",
+      "question": "429 hatası için hangi istisna sınıfı var?",
+      "expect_files": [
+        "_exceptions.py"
+      ]
+    },
+    {
+      "id": "d08",
+      "split": "dev",
+      "question": "Dosya yükleme isteği nasıl kodlanıyor?",
+      "expect_files": [
+        "_base_client.py",
+        "_files.py"
+      ],
+      "expect_symbols": [
+        "BaseClient._serialize_multipartform"
+      ],
+      "note": "iki dosya da geçerli: to_httpx_files + _serialize_multipartform"
+    },
+    {
+      "id": "d09",
+      "split": "dev",
+      "question": "Bir sonraki sayfa var mı nasıl anlaşılıyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "expect_symbols": [
+        "BasePage.has_next_page"
+      ]
+    },
+    {
+      "id": "d10",
+      "split": "dev",
+      "question": "Webhook imzası nasıl doğrulanıyor?",
+      "expect_files": [
+        "resources/beta/webhooks.py"
+      ]
+    },
+    {
+      "id": "d11",
+      "split": "dev",
+      "question": "Ajanın çalıştırdığı komutlar hangi dizine hapsediliyor?",
+      "expect_files": [
+        "lib/tools/agent_toolset.py"
+      ],
+      "expect_symbols": [
+        "resolve_path"
+      ]
+    },
+    {
+      "id": "d12",
+      "split": "dev",
+      "question": "Tool döngüsü ne zaman duruyor?",
+      "expect_files": [
+        "lib/tools/_beta_runner.py"
+      ]
+    },
+    {
+      "id": "d13",
+      "split": "dev",
+      "question": "Akış halinde gelen parçalar nasıl birleştirilip tam mesaj oluyor?",
+      "expect_files": [
+        "lib/streaming/_messages.py"
+      ],
+      "expect_symbols": [
+        "accumulate_event"
+      ]
+    },
+    {
+      "id": "d14",
+      "split": "dev",
+      "question": "Model isteği reddederse başka bir modele nasıl geçiliyor?",
+      "expect_files": [
+        "lib/middleware/_fallbacks.py"
+      ]
+    },
+    {
+      "id": "d15",
+      "split": "dev",
+      "question": "Hafıza dosyalarında sembolik link ile dışarı çıkma engelleniyor mu?",
+      "expect_files": [
+        "lib/tools/_beta_builtin_memory_tool.py"
+      ]
+    },
+    {
+      "id": "d16",
+      "split": "dev",
+      "question": "Kimlik bilgileri diskteki hangi dosyadan okunuyor?",
+      "expect_files": [
+        "lib/credentials/_providers.py"
+      ]
+    },
+    {
+      "id": "d17",
+      "split": "dev",
+      "question": "Amazon Bedrock istemcisi nerede tanımlı?",
+      "expect_files": [
+        "lib/bedrock/_mantle.py"
+      ]
+    },
+    {
+      "id": "d18",
+      "split": "dev",
+      "question": "Google Cloud'da proje kimliği nereden çıkarılıyor?",
+      "expect_files": [
+        "lib/google_cloud/_client.py"
+      ]
+    },
+    {
+      "id": "d19",
+      "split": "dev",
+      "question": "Sorgu dizesinde diziler nasıl biçimlendiriliyor?",
+      "expect_files": [
+        "_qs.py"
+      ]
+    },
+    {
+      "id": "d20",
+      "split": "dev",
+      "question": "Yüklenecek dosyalar httpx formatına nasıl çevriliyor?",
+      "expect_files": [
+        "_files.py"
+      ],
+      "expect_symbols": [
+        "to_httpx_files"
+      ]
+    },
+    {
+      "id": "d21",
+      "split": "dev",
+      "question": "Toplu iş sonuçları nasıl alınıyor?",
+      "expect_files": [
+        "resources/messages/batches.py"
+      ]
+    },
+    {
+      "id": "d22",
+      "split": "dev",
+      "question": "İstek göndermeden token sayısı nasıl hesaplanıyor?",
+      "expect_files": [
+        "resources/messages/messages.py"
+      ]
+    },
+    {
+      "id": "d23",
+      "split": "dev",
+      "question": "API anahtarı hangi HTTP başlığına konuyor?",
+      "expect_files": [
+        "_client.py"
+      ]
+    },
+    {
+      "id": "d24",
+      "split": "dev",
+      "question": "OAuth token ile kimlik doğrulama nasıl yapılıyor?",
+      "expect_files": [
+        "_client.py",
+        "lib/credentials/_auth.py"
+      ],
+      "note": "_bearer_auth ve kimlik bilgisi sağlayıcıları"
+    },
+    {
+      "id": "d25",
+      "split": "dev",
+      "question": "Yanıtın ham HTTP başlıklarına nasıl erişilir?",
+      "expect_files": [
+        "_response.py"
+      ]
+    },
+    {
+      "id": "d26",
+      "split": "dev",
+      "question": "İkili içerik dosyaya nasıl yazdırılıyor?",
+      "expect_files": [
+        "_response.py"
+      ],
+      "expect_symbols": [
+        "BinaryAPIResponse.write_to_file"
+      ]
+    },
+    {
+      "id": "d27",
+      "split": "dev",
+      "question": "İstek kimliği yanıtın neresinden okunuyor?",
+      "expect_files": [
+        "_response.py"
+      ]
+    },
+    {
+      "id": "d28",
+      "split": "dev",
+      "question": "İstemcinin ayarları değiştirilmiş bir kopyası nasıl üretiliyor?",
+      "expect_files": [
+        "_client.py"
+      ],
+      "expect_symbols": [
+        "Anthropic.copy"
+      ]
+    },
+    {
+      "id": "d29",
+      "split": "dev",
+      "question": "Microsoft Foundry desteği nerede?",
+      "expect_files": [
+        "lib/foundry.py"
+      ]
+    },
+    {
+      "id": "d30",
+      "split": "dev",
+      "question": "Tool çalıştırırken hata olursa modele nasıl bildiriliyor?",
+      "expect_files": [
+        "lib/tools/_beta_functions.py"
+      ],
+      "note": "ToolError"
+    },
+    {
+      "id": "d31",
+      "split": "dev",
+      "question": "Oturum içindeki tool çağrıları nasıl yürütülüyor?",
+      "expect_files": [
+        "lib/tools/_beta_session_runner.py"
+      ]
+    },
+    {
+      "id": "d32",
+      "split": "dev",
+      "question": "İstemcinin her isteğe eklediği varsayılan başlıklar nerede belirleniyor?",
+      "expect_files": [
+        "_client.py"
+      ],
+      "note": "default_headers / _validate_headers — eski hâli 'beta başlıkları' idi, onlarca dosyada geçtiği için tek doğru cevabı yoktu"
+    },
+    {
+      "id": "d33",
+      "split": "dev",
+      "question": "Ajan oturumu oluşturma isteği nerede yapılıyor?",
+      "expect_files": [
+        "resources/beta/sessions/sessions.py"
+      ]
+    },
+    {
+      "id": "d34",
+      "split": "dev",
+      "question": "Kayıtlı ajan yapılandırması oluşturma nerede?",
+      "expect_files": [
+        "resources/beta/agents/agents.py"
+      ]
+    },
+    {
+      "id": "d35",
+      "split": "dev",
+      "question": "Kimlik bilgisi kasası işlemleri nerede tanımlı?",
+      "expect_files": [
+        "resources/beta/vaults/vaults.py"
+      ]
+    },
+    {
+      "id": "d36",
+      "split": "dev",
+      "question": "Zamanlanmış çalıştırmalar hangi kaynak üzerinden yönetiliyor?",
+      "expect_files": [
+        "resources/beta/deployments.py"
+      ]
+    },
+    {
+      "id": "d37",
+      "split": "dev",
+      "question": "Kalıcı hafıza deposu işlemleri nerede?",
+      "expect_files": [
+        "resources/beta/memory_stores/memory_stores.py"
+      ]
+    },
+    {
+      "id": "d38",
+      "split": "dev",
+      "question": "Kendi altyapında çalışan iş kuyruğu nasıl yoklanıyor?",
+      "expect_files": [
+        "resources/beta/environments/work.py"
+      ]
+    },
+    {
+      "id": "d39",
+      "split": "dev",
+      "question": "Beceri (skill) sürümleri nasıl yönetiliyor?",
+      "expect_files": [
+        "resources/beta/skills/skills.py"
+      ]
+    },
+    {
+      "id": "d40",
+      "split": "dev",
+      "question": "Asenkron akışta olaylar nasıl tüketiliyor?",
+      "expect_files": [
+        "_streaming.py"
+      ]
+    },
+    {
+      "id": "t01",
+      "split": "test",
+      "question": "Bağlantı hatası ile zaman aşımı hatası birbirinden nasıl ayrılıyor?",
+      "expect_files": [
+        "_exceptions.py"
+      ]
+    },
+    {
+      "id": "t02",
+      "split": "test",
+      "question": "İsteğin gövdesi ve başlıkları nerede birleştirilip hazırlanıyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "expect_symbols": [
+        "BaseClient._build_request"
+      ]
+    },
+    {
+      "id": "t03",
+      "split": "test",
+      "question": "Temel adres sonunda eğik çizgi olmasa ne oluyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "note": "_enforce_trailing_slash"
+    },
+    {
+      "id": "t04",
+      "split": "test",
+      "question": "Yanıt gövdesinin akış halinde mi okunacağına nasıl karar veriliyor?",
+      "expect_files": [
+        "_base_client.py"
+      ]
+    },
+    {
+      "id": "t05",
+      "split": "test",
+      "question": "Sayfalar arasında otomatik gezinme nasıl çalışıyor?",
+      "expect_files": [
+        "_base_client.py"
+      ]
+    },
+    {
+      "id": "t06",
+      "split": "test",
+      "question": "Olay akışındaki ham satırlar nasıl parçalara bölünüyor?",
+      "expect_files": [
+        "_streaming.py"
+      ]
+    },
+    {
+      "id": "t07",
+      "split": "test",
+      "question": "Akış nesnesi kapatıldığında ne oluyor?",
+      "expect_files": [
+        "_streaming.py"
+      ]
+    },
+    {
+      "id": "t08",
+      "split": "test",
+      "question": "Yanıt gövdesi beklenen şemaya uymazsa hangi hata veriliyor?",
+      "expect_files": [
+        "_exceptions.py"
+      ]
+    },
+    {
+      "id": "t09",
+      "split": "test",
+      "question": "Beta uç noktalarına toplu istek gönderme nerede?",
+      "expect_files": [
+        "resources/beta/messages/batches.py"
+      ]
+    },
+    {
+      "id": "t10",
+      "split": "test",
+      "question": "Çıktı biçimi ile yapılandırma çakışırsa ne oluyor?",
+      "expect_files": [
+        "resources/beta/messages/messages.py"
+      ],
+      "note": "_validate_output_config_conflict"
+    },
+    {
+      "id": "t11",
+      "split": "test",
+      "question": "Ortam değişkeninden gelen token nasıl kullanılıyor?",
+      "expect_files": [
+        "lib/credentials/_providers.py"
+      ]
+    },
+    {
+      "id": "t12",
+      "split": "test",
+      "question": "Model isteği reddettiğinde kredi jetonu nasıl kullanılıyor?",
+      "expect_files": [
+        "lib/middleware/_fallbacks.py"
+      ]
+    },
+    {
+      "id": "t13",
+      "split": "test",
+      "question": "Kabuk komutu çalıştıran oturum nesnesi nerede?",
+      "expect_files": [
+        "lib/tools/agent_toolset.py"
+      ],
+      "note": "BashSession"
+    },
+    {
+      "id": "t14",
+      "split": "test",
+      "question": "Hafıza dosyası yazılırken yarıda kesilme riski nasıl önleniyor?",
+      "expect_files": [
+        "lib/tools/_beta_builtin_memory_tool.py"
+      ],
+      "note": "_atomic_write_file"
+    },
+    {
+      "id": "t15",
+      "split": "test",
+      "question": "Beta akış mesajlarının biriktirilmesi nerede yapılıyor?",
+      "expect_files": [
+        "lib/streaming/_beta_messages.py"
+      ]
+    },
+    {
+      "id": "t16",
+      "split": "test",
+      "question": "Eski sürüm yanıt nesnesine nasıl dönüştürülüyor?",
+      "expect_files": [
+        "_legacy_response.py"
+      ]
+    },
+    {
+      "id": "t17",
+      "split": "test",
+      "question": "Google Cloud istemcisinde temel adres nasıl belirleniyor?",
+      "expect_files": [
+        "lib/google_cloud/_client.py"
+      ]
+    },
+    {
+      "id": "t18",
+      "split": "test",
+      "question": "Bedrock yapılandırması nasıl çözümleniyor?",
+      "expect_files": [
+        "lib/bedrock/_mantle.py"
+      ]
+    },
+    {
+      "id": "t19",
+      "split": "test",
+      "question": "Dosya yükleme kaynağı hangi beta başlığını gerektiriyor?",
+      "expect_files": [
+        "resources/beta/files.py"
+      ]
+    },
+    {
+      "id": "t20",
+      "split": "test",
+      "question": "Kasa içindeki tekil sırlar nasıl yönetiliyor?",
+      "expect_files": [
+        "resources/beta/vaults/credentials.py"
+      ]
+    }
   ]
 }

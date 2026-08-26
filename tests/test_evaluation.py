@@ -82,7 +82,9 @@ def test_load_questions_rejects_duplicate_ids(tmp_path):
 def test_load_questions_returns_settings(tmp_path):
     path = tmp_path / "q.json"
     path.write_text(
-        json.dumps({"repo": "/x", "questions": [{"id": "q1", "question": "a", "expect_files": ["a.py"]}]}),
+        json.dumps(
+            {"repo": "/x", "questions": [{"id": "q1", "question": "a", "expect_files": ["a.py"]}]}
+        ),
         encoding="utf-8",
     )
     questions, settings = load_questions(path)
@@ -179,7 +181,9 @@ def test_retrieval_accepts_qualified_symbol_name():
     vectors, _ = embed_records(records, embedder, None)
 
     result = evaluate_retrieval(
-        HybridSearch(records, vectors, embedder), [Question("q1", "create", ["m.py"], ["create"])], k=5
+        HybridSearch(records, vectors, embedder),
+        [Question("q1", "create", ["m.py"], ["create"])],
+        k=5,
     )[0]
 
     assert result.symbols_found
@@ -284,3 +288,36 @@ def test_format_report_without_failures():
     questions = [Question("q1", "soru", ["a.py"])]
     report = Report(label="t", retrieval=[RetrievalResult("q1", True, 1, True, [])])
     assert "Getirmede başarısız" not in format_report(report, questions)
+
+
+def test_retrieval_coverage_differs_from_recall():
+    """Çok dosyalı soruda `found` yeterli değil: üçten birini bulmak da doğru sayılıyor.
+
+    Akış sorularında asıl ölçüt kapsam.
+    """
+    report = Report(
+        label="t",
+        retrieval=[
+            RetrievalResult("q1", True, 1, None, [], coverage=1 / 3),
+            RetrievalResult("q2", True, 1, None, [], coverage=1.0),
+        ],
+    )
+    assert report.recall == 1.0  # ikisi de "bulundu"
+    assert report.retrieval_coverage == pytest.approx((1 / 3 + 1.0) / 2)
+
+
+def test_coverage_is_computed_from_expected_files(searcher):
+    question = Question("q1", "charge_payment", ["api/orders.py", "yok/olan.py"])
+    result = evaluate_retrieval(searcher, [question], k=5)[0]
+    assert result.found  # bir dosya bulundu
+    assert result.coverage == pytest.approx(0.5)  # ikiden biri
+
+
+def test_akis_question_set_is_valid():
+    """Zor set bozulmamış ve gerçekten çok dosyalı olmalı."""
+    questions, settings = load_questions("eval/questions_akis.json")
+    multi = [q for q in questions if len(q.expect_files) > 1]
+
+    assert len(questions) == 20
+    assert len(multi) >= 8, "akış seti çok dosyalı sorular içermeli"
+    assert settings["index"] == "data/anthropic_ctx.jsonl"

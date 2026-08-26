@@ -92,12 +92,14 @@ class CodebaseAnswerer:
         model: str = DEFAULT_MODEL,
         context_size: int = 8,
         max_iterations: int = MAX_ITERATIONS,
+        mode: str = "hybrid",
     ):
         self.searcher = searcher
         self.repo_root = Path(repo_root).resolve()
         self.model = model
         self.context_size = context_size
         self.max_iterations = max_iterations
+        self.mode = mode
         self._client = client
         self._tool_calls: list[tuple[str, dict]] = []
 
@@ -140,7 +142,7 @@ class CodebaseAnswerer:
 
     def search_symbol(self, query: str, limit: int = 5) -> str:
         """İndekste arama yapar; modelin ikinci bir tur arama yapmasını sağlar."""
-        hits = self.searcher.search(query, k=limit)
+        hits = self.searcher.search(query, k=limit, mode=self.mode)
         if not hits:
             return f"'{query}' için sonuç yok."
         return "\n\n".join(self._format_hit(hit) for hit in hits)
@@ -163,13 +165,18 @@ class CodebaseAnswerer:
         content = f"{self.build_context(hits)}\n\nSoru: {question}"
         return [{"role": "user", "content": content}]
 
-    def _resolve_citation_path(self, path: str) -> Path | None:
+    def _resolve_citation_path(self, path: str, preferred: set[str] | None = None) -> Path | None:
         """Referanstaki yolu gerçek bir dosyaya bağlar.
 
         Model bazen yolu kısaltıyor: `codeqa/models.py` yerine `models.py`.
-        Bu bir uydurma değil, sadece eksik önek — indeksteki yollar arasında
-        tek bir eşleşme varsa kabul ediliyor. Birden fazla eşleşme varsa
-        hangisi olduğu belirsiz, o yüzden reddediliyor.
+        Bu bir uydurma değil, eksik önek — indekste tek eşleşme varsa kabul
+        ediliyor.
+
+        Birden fazla eşleşme varsa (`resources/messages/batches.py` ve
+        `resources/beta/messages/batches.py` gibi) hangisi olduğu belirsiz.
+        Ama model genelde ilk geçtiği yerde tam yolu yazıp sonra kısaltıyor;
+        `preferred` o cevapta tam yazılmış yolları taşıyor ve belirsizliği
+        çözüyor.
         """
         try:
             target = self._resolve(path)
@@ -184,6 +191,10 @@ class CodebaseAnswerer:
             for record in self.searcher.records
             if record["path"] == path or record["path"].endswith(suffix)
         }
+        if len(matches) > 1 and preferred:
+            narrowed = matches & preferred
+            if len(narrowed) == 1:
+                matches = narrowed
         if len(matches) != 1:
             return None
         candidate = self.repo_root / matches.pop()
@@ -191,10 +202,16 @@ class CodebaseAnswerer:
 
     def verify_citations(self, citations: list[str]) -> list[str]:
         """Var olmayan dosya/satıra işaret eden referansları döner."""
+        # Aynı cevapta tam yazılmış yollar, sonraki kısaltmaların bağlamı.
+        preferred = {
+            citation.rpartition(":")[0]
+            for citation in citations
+            if "/" in citation.rpartition(":")[0]
+        }
         unverified: list[str] = []
         for citation in citations:
             path, _, line = citation.rpartition(":")
-            target = self._resolve_citation_path(path)
+            target = self._resolve_citation_path(path, preferred)
             if target is None:
                 unverified.append(citation)
                 continue
@@ -244,7 +261,7 @@ class CodebaseAnswerer:
 
     def ask(self, question: str) -> Answer:
         """Soruyu cevaplar. Model, gerekirse tool'larla kodu kendisi okur."""
-        hits = self.searcher.search(question, k=self.context_size)
+        hits = self.searcher.search(question, k=self.context_size, mode=self.mode)
         self._tool_calls = []
 
         client = self._get_client()

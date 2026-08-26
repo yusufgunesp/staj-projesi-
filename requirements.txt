@@ -7,4 +7,15 @@ numpy>=2.0             # vektör benzerliği
 rank-bm25>=0.2.2       # anahtar kelime araması (hibrit aramanın BM25 tarafı)
 python-dotenv>=1.0     # .env okuma
 
+tree-sitter>=0.23      # C/C++/Java/C#/Go/TS/JS ayrıştırma
+tree-sitter-c>=0.23
+tree-sitter-cpp>=0.23
+tree-sitter-java>=0.23
+tree-sitter-c-sharp>=0.23
+tree-sitter-go>=0.23
+tree-sitter-typescript>=0.23
+tree-sitter-javascript>=0.23
+mcp>=2.0               # Claude Code entegrasyonu (MCP sunucusu)
+
 pytest>=8.0            # test
+ruff>=0.14             # lint ve biçimlendirme

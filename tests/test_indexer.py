@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from codeqa.indexer import extract_from_source, index_repo, iter_python_files
+from codeqa.indexer import extract_from_source, index_repo, iter_source_files
 
 SAMPLE = textwrap.dedent(
     '''
@@ -127,6 +127,36 @@ def test_embed_text_includes_context(chunks):
     assert func.text in func.embed_text
 
 
+def test_module_level_constants_are_indexed():
+    """Sabitler alınmazsa 'varsayılan zaman aşımı kaç' sorusu cevapsız kalıyor."""
+    source = (
+        '"""Ayarlar."""\n\nimport httpx\n\n'
+        "DEFAULT_TIMEOUT = httpx.Timeout(600)\n"
+        "DEFAULT_MAX_RETRIES = 2\n"
+        "RETRY_HEADER: str = 'retry-after'\n"
+    )
+    module = next(c for c in extract_from_source(source, "_constants.py") if c.kind == "module")
+
+    assert "DEFAULT_TIMEOUT" in module.text
+    assert "DEFAULT_MAX_RETRIES = 2" in module.text
+    assert "RETRY_HEADER" in module.text  # tip açıklamalı atama da alınmalı
+
+
+def test_long_assignments_are_truncated():
+    """Uzun __all__ listeleri parçayı şişirip arama değeri taşımıyor."""
+    source = "__all__ = [" + ", ".join(f"'sembol_{i}'" for i in range(200)) + "]\n"
+    module = next(c for c in extract_from_source(source, "m.py") if c.kind == "module")
+
+    assert "kısaltıldı" in module.text
+    assert len(module.text) < 500
+
+
+def test_module_chunk_line_range_covers_constants():
+    source = '"""X."""\n\nimport os\n\nA = 1\nB = 2\n'
+    module = next(c for c in extract_from_source(source, "m.py") if c.kind == "module")
+    assert module.start_line == 1 and module.end_line == 6
+
+
 def test_content_hash_covers_context_not_just_text():
     """Gövde aynı, bağlam farklı → hash farklı olmalı.
 
@@ -177,7 +207,7 @@ def test_excluded_directories_are_skipped(tmp_path):
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "x.py").write_text("def c():\n    pass\n", encoding="utf-8")
 
-    found = {p.name for p in iter_python_files(tmp_path)}
+    found = {p.name for p in iter_source_files(tmp_path)}
     assert found == {"app.py"}
 
 

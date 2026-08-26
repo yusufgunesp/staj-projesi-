@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import sys
@@ -15,7 +16,7 @@ from .docs import index_docs
 from .embeddings import CachedEmbedder, EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
 from .models import Chunk
-from .search import HybridSearch
+from .search import DIVERSITY_SLOTS, HybridSearch
 
 DEFAULT_OUTPUT = Path("data/chunks.jsonl")
 
@@ -139,13 +140,18 @@ def _build_search(args: argparse.Namespace) -> HybridSearch:
         "bm25": getattr(args, "bm25_weight", 1.0),
         "vector": getattr(args, "vector_weight", 1.0),
     }
+    cached = CachedEmbedder(embedder, cache)
+    # Süreç biterken bekleyen sorgu vektörleri diske yazılsın: toplu yazma
+    # performans için gerekli ama koşu sonunda kaydetmezsek boşa gidiyorlar.
+    atexit.register(cached.flush)
     return HybridSearch(
         records,
         vectors,
-        CachedEmbedder(embedder, cache),
+        cached,
         reranker=reranker,
         weights=weights,
         pool_size=getattr(args, "pool", 0) or None,
+        diversity_slots=getattr(args, "diversity_slots", DIVERSITY_SLOTS),
     )
 
 
@@ -243,6 +249,25 @@ def cmd_contextualize(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """MCP sunucusunu stdio üzerinden çalıştırır.
+
+    Doğrudan çağrılmıyor: MCP istemcisi (Claude Code gibi) bu komutu alt süreç
+    olarak başlatıp stdin/stdout üzerinden konuşuyor.
+    """
+    from .mcp_server import build_server
+
+    _load_env()
+    server = build_server(
+        index_path=Path(args.index),
+        provider=args.provider,
+        model=args.model,
+        mode=args.mode,
+    )
+    server.run(transport="stdio")
+    return 0
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     from .evaluation import (
         Report,
@@ -267,6 +292,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "rerank": args.rerank,
             "weights": {"bm25": args.bm25_weight, "vector": args.vector_weight},
             "pool": args.pool or None,
+            "diversity_slots": args.diversity_slots,
             "k": args.k,
             "questions": len(questions),
             "split": args.split,
@@ -311,6 +337,76 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_index_arg(parser: argparse.ArgumentParser, default: str) -> None:
+    parser.add_argument("-i", "--index", default=default, help="İndeks dosyası")
+
+
+def _add_embedding_args(parser: argparse.ArgumentParser) -> None:
+    """Vektör okuyan her komutta ortak olan sağlayıcı seçimi."""
+    parser.add_argument(
+        "--provider",
+        default="hash",
+        choices=["voyage", "ollama", "hash"],
+        help="Embedding sağlayıcısı (varsayılan: hash — anahtarsız, anlamsal arama yapmaz)",
+    )
+    parser.add_argument("--model", default=None, help="Sağlayıcıya özel embedding modeli")
+
+
+def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True) -> None:
+    """Arama davranışını ayarlayan ortak seçenekler.
+
+    `search`, `ask` ve `eval` aynı arama katmanını kurduğu için aynı
+    seçenekleri alıyorlar; tek yerde tanımlı olmaları ikisinin ayrışmasını
+    engelliyor.
+    """
+    if with_mode:
+        parser.add_argument(
+            "--mode",
+            default="hybrid",
+            choices=["hybrid", "vector", "bm25"],
+            help="Arama modu (varsayılan: hybrid)",
+        )
+    parser.add_argument(
+        "--rerank",
+        default="none",
+        choices=["none", "voyage"],
+        help="İlk sonuçları yeniden sırala (varsayılan: kapalı)",
+    )
+    parser.add_argument(
+        "--rerank-model", default=None, dest="rerank_model", help="Reranker modeli"
+    )
+    parser.add_argument(
+        "--bm25-weight",
+        type=float,
+        default=1.0,
+        dest="bm25_weight",
+        help="RRF'de BM25'in ağırlığı (varsayılan 1.0)",
+    )
+    parser.add_argument(
+        "--vector-weight",
+        type=float,
+        default=1.0,
+        dest="vector_weight",
+        help="RRF'de vektör aramasının ağırlığı (varsayılan 1.0)",
+    )
+    parser.add_argument(
+        "--pool",
+        type=int,
+        default=0,
+        help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)",
+    )
+    parser.add_argument(
+        "--diversity-slots",
+        type=int,
+        default=DIVERSITY_SLOTS,
+        dest="diversity_slots",
+        help=(
+            "İlk k sonucun arkasına eklenecek yeni dosya sayısı "
+            f"(0 = kapalı, varsayılan {DIVERSITY_SLOTS})"
+        ),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codeqa", description="Kod tabanı soru-cevap asistanı — indeksleme araçları"
@@ -320,97 +416,60 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser = subparsers.add_parser("index", help="Bir repoyu indeksle")
     index_parser.add_argument("repo", help="İndekslenecek repo dizini")
     index_parser.add_argument(
-        "-o", "--output", default=str(DEFAULT_OUTPUT), help=f"Çıktı dosyası (varsayılan: {DEFAULT_OUTPUT})"
+        "-o",
+        "--output",
+        default=str(DEFAULT_OUTPUT),
+        help=f"Çıktı dosyası (varsayılan: {DEFAULT_OUTPUT})",
     )
     index_parser.add_argument("--no-docs", action="store_true", help="Markdown dosyalarını atla")
     index_parser.add_argument(
-        "--exclude", action="append", default=[], metavar="AD", help="Ek olarak dışlanacak dizin adı"
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="AD",
+        help="Ek olarak dışlanacak dizin adı",
     )
     index_parser.set_defaults(func=cmd_index)
 
     embed_parser = subparsers.add_parser("embed", help="İndeksteki parçaları vektörleştir")
-    embed_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
-    embed_parser.add_argument(
-        "--provider",
-        default="hash",
-        choices=["voyage", "ollama", "hash"],
-        help="Embedding sağlayıcısı (varsayılan: hash — anahtar gerektirmez, anlamsal arama yapmaz)",
-    )
-    embed_parser.add_argument("--model", default=None, help="Sağlayıcıya özel model adı")
+    _add_index_arg(embed_parser, str(DEFAULT_OUTPUT))
+    _add_embedding_args(embed_parser)
     embed_parser.set_defaults(func=cmd_embed)
 
     search_parser = subparsers.add_parser("search", help="Doğal dilde arama")
     search_parser.add_argument("query", help="Soru ya da aranacak metin")
-    search_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
-    search_parser.add_argument(
-        "--mode",
-        default="hybrid",
-        choices=["hybrid", "vector", "bm25"],
-        help="Arama modu (varsayılan: hybrid)",
-    )
-    search_parser.add_argument(
-        "--provider", default="hash", choices=["voyage", "ollama", "hash"], help="Embedding sağlayıcısı"
-    )
-    search_parser.add_argument("--model", default=None, help="Sağlayıcıya özel model adı")
+    _add_index_arg(search_parser, str(DEFAULT_OUTPUT))
+    _add_embedding_args(search_parser)
+    _add_retrieval_args(search_parser)
     search_parser.add_argument("-n", "--limit", type=int, default=5, help="Sonuç sayısı")
-    search_parser.add_argument("--lines", type=int, default=6, help="Parça başına gösterilecek satır")
     search_parser.add_argument(
-        "--rerank",
-        default="none",
-        choices=["none", "voyage"],
-        help="İlk sonuçları yeniden sırala (varsayılan: kapalı)",
+        "--lines", type=int, default=6, help="Parça başına gösterilecek satır"
     )
-    search_parser.add_argument("--rerank-model", default=None, dest="rerank_model", help="Reranker modeli")
-    search_parser.add_argument("--bm25-weight", type=float, default=1.0, dest="bm25_weight",
-        help="RRF'de BM25'in ağırlığı (varsayılan 1.0)")
-    search_parser.add_argument("--vector-weight", type=float, default=1.0, dest="vector_weight",
-        help="RRF'de vektör aramasının ağırlığı (varsayılan 1.0)")
-    search_parser.add_argument("--pool", type=int, default=0,
-        help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)")
     search_parser.set_defaults(func=cmd_search)
 
     ask_parser = subparsers.add_parser("ask", help="Kod tabanına doğal dilde soru sor")
     ask_parser.add_argument("question", help="Soru")
     ask_parser.add_argument("--repo", default=".", help="Soruların sorulduğu repo dizini")
-    ask_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
-    ask_parser.add_argument(
-        "--provider", default="hash", choices=["voyage", "ollama", "hash"], help="Embedding sağlayıcısı"
-    )
-    ask_parser.add_argument("--model", default=None, help="Embedding modeli")
+    _add_index_arg(ask_parser, str(DEFAULT_OUTPUT))
+    _add_embedding_args(ask_parser)
+    _add_retrieval_args(ask_parser)
     ask_parser.add_argument(
         "--model-name", default=DEFAULT_MODEL, dest="model_name", help="Cevaplayan Claude modeli"
     )
     ask_parser.add_argument("--context", type=int, default=8, help="Modele verilecek parça sayısı")
-    ask_parser.add_argument("--mode", default="hybrid", help=argparse.SUPPRESS)
-    ask_parser.add_argument(
-        "--rerank",
-        default="none",
-        choices=["none", "voyage"],
-        help="İlk sonuçları yeniden sırala (varsayılan: kapalı)",
-    )
-    ask_parser.add_argument("--rerank-model", default=None, dest="rerank_model", help="Reranker modeli")
-    ask_parser.add_argument("--bm25-weight", type=float, default=1.0, dest="bm25_weight",
-        help="RRF'de BM25'in ağırlığı (varsayılan 1.0)")
-    ask_parser.add_argument("--vector-weight", type=float, default=1.0, dest="vector_weight",
-        help="RRF'de vektör aramasının ağırlığı (varsayılan 1.0)")
-    ask_parser.add_argument("--pool", type=int, default=0,
-        help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)")
     ask_parser.set_defaults(func=cmd_ask)
 
     eval_parser = subparsers.add_parser("eval", help="Soru seti üzerinde doğruluk ölç")
     eval_parser.add_argument(
         "-q", "--questions", default="eval/questions.json", help="Soru seti dosyası"
     )
-    eval_parser.add_argument("-i", "--index", default=None, help="İndeks dosyası")
+    _add_index_arg(eval_parser, None)
     eval_parser.add_argument("--repo", default=None, help="Soruların sorulduğu repo dizini")
-    eval_parser.add_argument(
-        "--provider", default="hash", choices=["voyage", "ollama", "hash"], help="Embedding sağlayıcısı"
-    )
-    eval_parser.add_argument("--model", default=None, help="Embedding modeli")
+    _add_embedding_args(eval_parser)
+    _add_retrieval_args(eval_parser)
     eval_parser.add_argument(
         "--model-name", default=DEFAULT_MODEL, dest="model_name", help="Cevaplayan Claude modeli"
     )
-    eval_parser.add_argument("--mode", default="hybrid", choices=["hybrid", "vector", "bm25"])
     eval_parser.add_argument("-k", type=int, default=8, help="İlk kaç sonuca bakılsın")
     eval_parser.add_argument(
         "--answers", action="store_true", help="Cevapları da ölç (Claude çağırır, ücretli)"
@@ -423,20 +482,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hangi bölme koşulsun. Ayar denemeleri dev'de, rapor test'te.",
     )
     eval_parser.add_argument("--label", default="baseline", help="Koşu etiketi (dosya adına girer)")
-    eval_parser.add_argument(
-        "--rerank",
-        default="none",
-        choices=["none", "voyage"],
-        help="İlk sonuçları yeniden sırala (varsayılan: kapalı)",
-    )
-    eval_parser.add_argument("--rerank-model", default=None, dest="rerank_model", help="Reranker modeli")
-    eval_parser.add_argument("--bm25-weight", type=float, default=1.0, dest="bm25_weight",
-        help="RRF'de BM25'in ağırlığı (varsayılan 1.0)")
-    eval_parser.add_argument("--vector-weight", type=float, default=1.0, dest="vector_weight",
-        help="RRF'de vektör aramasının ağırlığı (varsayılan 1.0)")
-    eval_parser.add_argument("--pool", type=int, default=0,
-        help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)")
     eval_parser.set_defaults(func=cmd_eval)
+
+    serve_parser = subparsers.add_parser(
+        "serve", help="MCP sunucusu olarak çalış (Claude Code entegrasyonu)"
+    )
+    _add_index_arg(serve_parser, str(DEFAULT_OUTPUT))
+    _add_embedding_args(serve_parser)
+    serve_parser.add_argument(
+        "--mode",
+        default="vector",
+        choices=["hybrid", "vector", "bm25"],
+        help="Arama modu (varsayılan: vector)",
+    )
+    serve_parser.set_defaults(func=cmd_serve)
 
     ctx_parser = subparsers.add_parser(
         "contextualize", help="Parçalara LLM ile bağlam cümlesi ekle"
@@ -450,7 +509,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ctx_parser.set_defaults(func=cmd_contextualize)
 
-    grep_parser = subparsers.add_parser("grep", help="İndekste ham metin ara (embedding gerektirmez)")
+    grep_parser = subparsers.add_parser(
+        "grep", help="İndekste ham metin ara (embedding gerektirmez)"
+    )
     grep_parser.add_argument("query", help="Aranacak metin")
     grep_parser.add_argument("-i", "--index", default=str(DEFAULT_OUTPUT), help="İndeks dosyası")
     grep_parser.add_argument("-n", "--limit", type=int, default=5, help="Gösterilecek sonuç sayısı")

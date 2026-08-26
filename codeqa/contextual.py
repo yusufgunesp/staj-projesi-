@@ -36,6 +36,7 @@ def _hash_embed_text(record: dict) -> str:
     """Kaydın embedding'e giden metninin karması. `Chunk.content_hash` ile aynı kural."""
     return _hash(f"{record['context']}\n\n{record['text']}")
 
+
 #: Bağlam üretimi hacimli ve basit bir iş — ucuz model doğru tercih.
 DEFAULT_MODEL = "claude-haiku-4-5"
 
@@ -144,7 +145,7 @@ class ContextGenerator:
                     with self._lock:
                         self.failures.append(f"{record['id']}: {type(exc).__name__}")
                     return ""
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
         return ""  # pragma: no cover
 
     @staticmethod
@@ -181,7 +182,7 @@ class ContextGenerator:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"<dosya path=\"{record['path']}\">\n{file_source}\n</dosya>",
+                            "text": f'<dosya path="{record["path"]}">\n{file_source}\n</dosya>',
                             # Dosya içeriği o dosyadaki her parça için tekrar
                             # gönderiliyor; önbelleklenmezse maliyet dosya
                             # boyutu × parça sayısı kadar oluyor.
@@ -190,8 +191,8 @@ class ContextGenerator:
                         {
                             "type": "text",
                             "text": (
-                                f"<parça name=\"{record['name']}\" "
-                                f"lines=\"{record['start_line']}-{record['end_line']}\">\n"
+                                f'<parça name="{record["name"]}" '
+                                f'lines="{record["start_line"]}-{record["end_line"]}">\n'
                                 f"{record['text']}\n</parça>"
                             ),
                         },
@@ -208,9 +209,7 @@ class ContextGenerator:
                 "cache_read_input_tokens",
                 "cache_creation_input_tokens",
             ):
-                self.usage[name] = self.usage.get(name, 0) + (
-                    getattr(response.usage, name, 0) or 0
-                )
+                self.usage[name] = self.usage.get(name, 0) + (getattr(response.usage, name, 0) or 0)
         return text
 
     def save(self) -> None:
@@ -256,8 +255,10 @@ class ContextGenerator:
             with self._lock:
                 counter["files"] += 1
                 if progress and counter["files"] % 50 == 0:
-                    print(f"  {counter['files']}/{len(by_file)} dosya "
-                          f"({counter['generated']} yeni cümle)")
+                    print(
+                        f"  {counter['files']}/{len(by_file)} dosya "
+                        f"({counter['generated']} yeni cümle)"
+                    )
                 # Sık kaydetmek önemli: ilk koşu 50. dosyada çöktüğünde
                 # 100 dosyada bir kaydettiği için o ana kadar üretilen 723
                 # cümle kayboldu. Diske yazmak birkaç bin kayıt için ucuz,

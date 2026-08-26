@@ -17,7 +17,13 @@ from codeqa.embeddings import (
     tokenize,
 )
 from codeqa.indexer import extract_from_source
-from codeqa.search import BM25Search, HybridSearch, VectorSearch, reciprocal_rank_fusion
+from codeqa.search import (
+    BM25Search,
+    HybridSearch,
+    VectorSearch,
+    extend_with_unseen_files,
+    reciprocal_rank_fusion,
+)
 
 SOURCE = '''
 """Sipariş akışı."""
@@ -170,6 +176,40 @@ def test_cache_roundtrip(tmp_path, embedder):
     assert np.allclose(reloaded.get("abc123"), vector)
 
 
+def test_cache_save_merges_with_disk(tmp_path, embedder):
+    """İki süreç aynı önbelleği kullanıyor; kendi kopyasını yazan diğerini siler.
+
+    Gerçekte yaşandı: arka planda koşan ölçüm, indeksleme sırasında eklenen
+    180 vektörü sessizce sildi. Hata ancak arama sırasında ortaya çıktı.
+    """
+    first = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+    first.put("a", embedder.embed_query("bir"))
+    first.save()
+
+    # İkinci süreç aynı dosyayı yüklüyor
+    second = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+
+    # Birinci süreç yeni bir vektör ekliyor
+    first.put("b", embedder.embed_query("iki"))
+    first.save()
+
+    # İkinci süreç kendi eklemesini kaydediyor — "b"yi silmemeli
+    second.put("c", embedder.embed_query("üç"))
+    second.save()
+
+    reloaded = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+    assert set(("a", "b", "c")) <= set(reloaded._vectors)
+
+
+def test_cache_save_is_atomic(tmp_path, embedder):
+    """Yarıda kesilen yazma önbelleği bozuk bırakmamalı."""
+    cache = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+    cache.put("a", embedder.embed_query("bir"))
+    cache.save()
+    assert not list(tmp_path.glob("*.tmp")), "geçici dosya bırakılmamalı"
+    assert EmbeddingCache(embedder.name, cache_dir=tmp_path).get("a") is not None
+
+
 def test_cache_prevents_recomputation(tmp_path, records, embedder):
     cache = EmbeddingCache(embedder.name, cache_dir=tmp_path)
 
@@ -227,14 +267,35 @@ def test_cached_embedder_separates_different_queries(tmp_path):
 
 
 def test_cached_embedder_survives_restart(tmp_path):
+    """flush() sonrası sorgu vektörü diskte kalmalı."""
     inner = _CountingEmbedder()
     cache_name = inner.name
-    CachedEmbedder(inner, EmbeddingCache(cache_name, cache_dir=tmp_path)).embed_query("soru")
+    first = CachedEmbedder(inner, EmbeddingCache(cache_name, cache_dir=tmp_path))
+    first.embed_query("soru")
+    first.flush()
 
     fresh = _CountingEmbedder()
     CachedEmbedder(fresh, EmbeddingCache(cache_name, cache_dir=tmp_path)).embed_query("soru")
 
     assert fresh.query_calls == 0  # diskteki önbellekten geldi
+
+
+def test_cached_embedder_batches_disk_writes(tmp_path):
+    """Her sorguda diske yazmak, birleştirmeli kaydetmeyle birlikte çok pahalı.
+
+    Ölçüldü: 40 soruluk bir koşu, 40 MB'lık önbelleği her sorguda baştan
+    okuyup yazdığı için 10 dakikayı aştı.
+    """
+    inner = _CountingEmbedder()
+    embedder = CachedEmbedder(inner, EmbeddingCache(inner.name, cache_dir=tmp_path))
+
+    embedder.embed_query("bir")
+
+    # Henüz eşik dolmadı: dosya yazılmamış olmalı
+    assert not list(tmp_path.glob("*.npz"))
+
+    embedder.flush()
+    assert list(tmp_path.glob("*.npz"))
 
 
 def test_cached_embedder_query_keys_do_not_collide_with_chunks(tmp_path):
@@ -278,7 +339,9 @@ def test_vector_search_drops_zero_similarity_results():
     """Örtüşmeyen parça sonuç olarak dönmemeli — yoksa modele çöp parça gidiyor."""
     documents = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)  # 2. parça dik
     fake_records = [{"name": "eslesen"}, {"name": "alakasiz"}]
-    searcher = VectorSearch(fake_records, documents, _FixedEmbedder(np.array([1.0, 0.0], np.float32)))
+    searcher = VectorSearch(
+        fake_records, documents, _FixedEmbedder(np.array([1.0, 0.0], np.float32))
+    )
 
     results = searcher.search("herhangi", k=5)
 
@@ -339,3 +402,90 @@ def test_hybrid_search_rejects_unknown_mode(records, embedder):
 def test_search_on_empty_index(embedder):
     searcher = HybridSearch([], np.zeros((0, 256), dtype=np.float32), embedder)
     assert searcher.search("herhangi bir şey") == []
+
+
+# --- çeşitlilik slotları --------------------------------------------------
+
+MULTI_FILE_SOURCES = {
+    "api/orders.py": '''
+"""Sipariş uçları."""
+
+
+def create_order(payload: dict) -> int:
+    """Sipariş kaydı açar ve ödeme akışını başlatır."""
+    return 1
+
+
+def cancel_order(order_id: int) -> None:
+    """Siparişi iptal eder, ödeme iadesini tetikler."""
+    return None
+''',
+    "services/payment.py": '''
+"""Ödeme sağlayıcısı."""
+
+
+def charge(order_id: int) -> bool:
+    """Sipariş için tahsilat yapar."""
+    return True
+''',
+    "models/order.py": '''
+"""Sipariş modeli."""
+
+
+def save_order(order_id: int) -> None:
+    """Siparişi veritabanına yazar."""
+    return None
+''',
+}
+
+
+@pytest.fixture
+def multi_file_records():
+    records = []
+    for path, source in MULTI_FILE_SOURCES.items():
+        records.extend(c.to_dict() for c in extract_from_source(source, path))
+    return records
+
+
+def test_extend_with_unseen_files_keeps_head_intact():
+    ranked = [("a.py", 1), ("a.py", 2), ("b.py", 3)]
+    result = extend_with_unseen_files(ranked, lambda item: item[0], k=2, slots=1, scan=10)
+    assert result[:2] == ranked[:2]  # ilk k dokunulmadı
+    assert result[2] == ("b.py", 3)  # arkasına yeni dosya eklendi
+
+
+def test_extend_with_unseen_files_skips_already_seen():
+    ranked = [("a.py", 1), ("a.py", 2), ("a.py", 3), ("b.py", 4)]
+    result = extend_with_unseen_files(ranked, lambda item: item[0], k=1, slots=2, scan=10)
+    # a.py zaten temsil edildiği için 2 ve 3 atlanıyor, yalnızca b.py ekleniyor
+    assert result == [("a.py", 1), ("b.py", 4)]
+
+
+def test_extend_with_unseen_files_disabled_returns_head():
+    ranked = [("a.py", 1), ("b.py", 2)]
+    assert extend_with_unseen_files(ranked, lambda i: i[0], k=1, slots=0, scan=10) == [("a.py", 1)]
+
+
+def test_diversity_slots_add_new_files(multi_file_records, embedder):
+    """Kota değil ekleme: ilk k korunuyor, sonuç listesi yeni dosyalarla uzuyor."""
+    vectors, _ = embed_records(multi_file_records, embedder, None)
+    plain = HybridSearch(multi_file_records, vectors, embedder, diversity_slots=0)
+    diverse = HybridSearch(multi_file_records, vectors, embedder, diversity_slots=2)
+
+    base = plain.search("sipariş", k=2, mode="bm25")
+    extended = diverse.search("sipariş", k=2, mode="bm25")
+
+    assert [h.location for h in extended[:2]] == [h.location for h in base]
+    assert len(extended) > len(base)
+    assert len({h.record["path"] for h in extended}) > len({h.record["path"] for h in base})
+
+
+def test_diversity_slots_never_shrink_result(multi_file_records, embedder):
+    """Eleme yapmadığı için sonuç sayısı hiçbir koşulda azalmıyor."""
+    vectors, _ = embed_records(multi_file_records, embedder, None)
+    plain = HybridSearch(multi_file_records, vectors, embedder, diversity_slots=0)
+    diverse = HybridSearch(multi_file_records, vectors, embedder, diversity_slots=4)
+    for mode in ("hybrid", "vector", "bm25"):
+        assert len(diverse.search("ödeme", k=3, mode=mode)) >= len(
+            plain.search("ödeme", k=3, mode=mode)
+        )

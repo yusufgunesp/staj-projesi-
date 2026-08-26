@@ -19,6 +19,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -278,9 +279,16 @@ class CachedEmbedder(Embedder):
     hesapta bu tek başına dakikalar sürüyor.
     """
 
+    #: Kaç yeni sorgudan sonra diske yazılacağı. Her sorguda yazmak, birleştirmeli
+    #: kaydetme yüzünden tüm önbelleği (büyük repoda 40 MB) baştan okuyup yazmak
+    #: demek — 40 soruluk bir ölçüm koşusu dakikalarca sürüyordu. Ara kayıp
+    #: sadece birkaç sorgu vektörü, yeniden hesaplanması ucuz.
+    SAVE_EVERY = 25
+
     def __init__(self, embedder: Embedder, cache: EmbeddingCache):
         self._embedder = embedder
         self._cache = cache
+        self._pending = 0
         self.name = embedder.name
         self.dimension = embedder.dimension
 
@@ -296,8 +304,16 @@ class CachedEmbedder(Embedder):
             return cached
         vector = self._embedder.embed_query(text)
         self._cache.put(key, vector)
-        self._cache.save()
+        self._pending += 1
+        if self._pending >= self.SAVE_EVERY:
+            self.flush()
         return vector
+
+    def flush(self) -> None:
+        """Bekleyen sorgu vektörlerini diske yazar."""
+        if self._pending:
+            self._cache.save()
+            self._pending = 0
 
 
 def get_embedder(provider: str, model: str | None = None) -> Embedder:
@@ -334,12 +350,42 @@ class EmbeddingCache:
         self._vectors = {str(key): vectors[i] for i, key in enumerate(keys)}
 
     def save(self) -> None:
+        """Önbelleği diske yazar. Diskteki mevcut içerikle birleştirerek.
+
+        Birleştirme şart: aynı önbellek dosyasını birden fazla süreç kullanıyor
+        (bir yanda indeksleme, öbür yanda ölçüm koşusu). Süreç kendi bellekteki
+        kopyasını olduğu gibi yazarsa, başlangıcından sonra başka bir sürecin
+        eklediği vektörleri siler. Bu sessizce olur — kaybolan vektör ancak
+        arama sırasında "vektörü yok" hatası olarak ortaya çıkar.
+
+        Yazma da atomik: geçici dosyaya yazıp yerine taşıyor, böylece yarıda
+        kesilen bir koşu önbelleği bozuk bırakmıyor.
+        """
         if not self._vectors:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        keys = list(self._vectors)
-        vectors = np.stack([self._vectors[k] for k in keys])
-        np.savez(self.path, keys=np.array(keys), vectors=vectors)
+
+        merged = dict(self._vectors)
+        if self.path.exists():
+            try:
+                with np.load(self.path, allow_pickle=False) as data:
+                    for index, key in enumerate(data["keys"]):
+                        merged.setdefault(str(key), data["vectors"][index])
+            except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile):
+                # Yarım yazılmış ya da bozuk önbellek dosyası koşuyu durdurmasın.
+                # Başka bir sürecin yazması sırasında okumaya denk gelmek
+                # mümkün; o turda birleştirme atlanır, veri sonraki kayıtta
+                # yine yerine oturur.
+                pass
+
+        keys = list(merged)
+        vectors = np.stack([merged[k] for k in keys])
+        # Uzantı .npz ile bitmeli: np.savez aksi hâlde sonuna kendisi ekliyor
+        # ve taşınacak dosya adı tutmuyor.
+        temporary = self.path.with_suffix(".tmp.npz")
+        np.savez(temporary, keys=np.array(keys), vectors=vectors)
+        temporary.replace(self.path)
+        self._vectors = merged
 
     def __contains__(self, key: str) -> bool:
         return key in self._vectors

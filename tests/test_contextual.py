@@ -46,7 +46,7 @@ class _FakeClient:
             cache_creation_input_tokens = 0
 
         class _Response:
-            content = [_Block()]
+            content: list = [_Block()]  # noqa: RUF012 - testte sabit sahte yanıt
             usage = _Usage()
 
         return _Response()

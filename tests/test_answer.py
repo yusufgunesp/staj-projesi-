@@ -6,7 +6,6 @@ doğrulama — yani asıl mantık. Tool döngüsünü SDK yürütüyor.
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from codeqa.answer import MAX_READ_LINES, Answer, CodebaseAnswerer, extract_citations
@@ -171,6 +170,22 @@ def test_verify_citations_rejects_ambiguous_shortened_path(answerer):
         {"path": "api/orders.py"},
         {"path": "web/orders.py"},
     ]
+    assert answerer.verify_citations(["orders.py:4"]) == ["orders.py:4"]
+
+
+def test_ambiguous_short_path_resolved_by_full_path_in_same_answer(answerer, repo):
+    """Model önce tam yolu yazıp sonra kısaltıyor; bu bağlam belirsizliği çözer.
+
+    Gerçek koşuda görüldü: cevap `resources/beta/messages/batches.py:49` yazıp
+    sonra `batches.py:97` demişti. İki farklı batches.py olduğu için reddedilmişti.
+    """
+    (repo / "web").mkdir()
+    (repo / "web" / "orders.py").write_text("x = 1\n" * 20, encoding="utf-8")
+    answerer.searcher.records = [{"path": "api/orders.py"}, {"path": "web/orders.py"}]
+
+    # Tam yol aynı cevapta geçiyorsa kısaltma çözülebilmeli
+    assert answerer.verify_citations(["api/orders.py:4", "orders.py:4"]) == []
+    # Tam yol yoksa yine belirsiz
     assert answerer.verify_citations(["orders.py:4"]) == ["orders.py:4"]
 
 

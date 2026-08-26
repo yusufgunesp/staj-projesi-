@@ -4,367 +4,332 @@ Bir kod tabanını indeksleyip doğal dildeki sorulara **dosya ve satır referan
 Amaç, yeni bir projeye adapte olma süresini kısaltmak: her cevap kaynak gösterdiği için doğruluğu
 anında kontrol edilebiliyor.
 
-> Hedeflenen kullanım:
-> **S:** "Bu projede sipariş akışı nasıl işliyor?"
-> **C:** `api/orders.py:88`'de başlıyor, `services/payment.py:145`'te ödeme sağlayıcısına gidiyor,
-> `models/order.py:67`'de kaydediliyor.
+```
+$ codeqa ask "istek kaç kez yeniden deneniyor?"
+
+Varsayılan 2 (`_constants.py:12`). Karar `_base_client.py:842`'deki
+_should_retry'da veriliyor: 408, 409, 429 ve 5xx yeniden deneniyor.
+Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
+```
+
+**Ölçülen sonuç:** 1097 dosyalık bir üçüncü taraf repoda, 20 soruluk ayrı bir test setinde
+**cevap doğruluğu %100**, uydurma referans yok.
+
+## İçindekiler
+
+- [Kurulum](#kurulum) · [Kullanım](#kullanım)
+- [Nasıl çalışıyor](#nasıl-çalışıyor) — [parçalama](#parçalama), [arama](#arama),
+  [cevaplama](#cevaplama)
+- [Ölçüm](#ölçüm) — asıl sonuçlar burada
+- [Öğrenilenler](#öğrenilenler) — işe yarayanlar ve yaramayanlar
+- [Sıradaki adımlar](#sıradaki-adımlar)
 
 ## Durum
 
 | Hafta | Hedef | Durum |
 |-------|-------|-------|
-| 1 | Kod sembolü çıkarma, doküman parçalama | **Tamam** |
-| 2 | Embedding + arama katmanı, çalışan temel sürüm | **Tamam** |
-| 3 | Cevaplama katmanı + ölçüm | **Tamam** — reranking ve prompt iyileştirme sırada |
-| 4 | Claude Code / MCP entegrasyonu, dokümantasyon, demo | — |
+| 1 | Kod sembolü çıkarma, doküman parçalama | Tamam |
+| 2 | Embedding + arama katmanı | Tamam |
+| 3 | Cevaplama katmanı, ölçüm düzeneği, iyileştirmeler | Tamam |
+| 4 | Claude Code / MCP entegrasyonu, çok dil desteği | Tamam — demo sırada |
 
 ## Kurulum
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env      # anahtarları .env dosyasına yazın, .env.example'a değil
 ```
 
-Anahtarlar (Hafta 2'den itibaren gerekli):
-
-```bash
-cp .env.example .env
-```
+| Anahtar | Ne için | Zorunlu mu |
+|---------|---------|------------|
+| `ANTHROPIC_API_KEY` | Cevaplama ve bağlam üretimi | Cevap almak için evet |
+| `VOYAGE_API_KEY` | Embedding (`--provider voyage`) | Hayır — Ollama ya da `hash` de var |
 
 ## Kullanım
 
-Bir repoyu indeksle:
-
 ```bash
-.venv/bin/python -m codeqa index /yol/repo -o data/chunks.jsonl
+codeqa index /yol/repo -o data/chunks.jsonl     # 1. indeksle
+codeqa embed --provider voyage                  # 2. vektörleştir
+codeqa ask "ödeme akışı nasıl işliyor"          # 3. sor
 ```
 
-Parçaları vektörleştir:
+(`codeqa` yerine `.venv/bin/python -m codeqa`.)
 
-```bash
-.venv/bin/python -m codeqa embed --provider hash
-```
+Diğer komutlar:
 
-Ara:
+| Komut | Ne yapar |
+|-------|----------|
+| `search` | Cevap üretmeden sadece arama sonuçlarını gösterir |
+| `eval` | Soru seti üzerinde doğruluk ölçer |
+| `contextualize` | Parçalara LLM ile bağlam cümlesi ekler |
+| `serve` | MCP sunucusu olarak çalışır (Claude Code entegrasyonu) |
+| `stats` / `grep` | İndeksi inceleme araçları |
 
-```bash
-.venv/bin/python -m codeqa search "ödeme akışı nerede başlıyor"
-```
+**Desteklenen diller:** Python, C, C++, Java, C#, Go, TypeScript, JavaScript. Python yerleşik
+`ast` ile, diğerleri tree-sitter grameriyle ayrıştırılıyor.
 
-Soru sor (`ANTHROPIC_API_KEY` gerekir):
+> ⚠️ **Doğruluk yalnızca Python üzerinde ölçüldü.** Diğer diller için sembol çıkarma birim
+> testlerle doğrulandı (her dil için sınıf, metot, fonksiyon, import ve satır aralıkları), ama
+> uçtan uca arama/cevap doğruluğu ölçülmedi. "Java'da da %100 doğru" demek için o dilde bir soru
+> seti hazırlanması gerekiyor.
 
-```bash
-.venv/bin/python -m codeqa ask "sipariş akışı nasıl işliyor" --repo /yol/repo
-```
-
-Sağlayıcılar: `voyage` (bulut, `VOYAGE_API_KEY` gerekir), `ollama` (local, kod dışarı çıkmaz),
-`hash` (anahtarsız — anlamsal arama **yapmaz**, sadece kelime örtüşmesine bakar; boru hattını
-anahtar olmadan denemek için). Arama modları: `--mode hybrid` (varsayılan), `vector`, `bm25`.
-
-İstatistikler ve ham metin araması:
-
-```bash
-.venv/bin/python -m codeqa stats -i data/chunks.jsonl
-```
-
-Testler:
-
-```bash
-.venv/bin/python -m pytest tests/ -q
-```
+**Embedding sağlayıcıları:** `voyage` (bulut, en iyi sonuç), `ollama` (local, kod dışarı çıkmaz),
+`hash` (anahtarsız yer tutucu — anlamsal arama **yapmaz**, sadece boru hattını denemek için).
 
 ## Nasıl çalışıyor
 
-### Parçalama (chunking)
+```
+repo ──index──> parçalar ──embed──> vektörler
+                                       │
+soru ──────────────────────────────> arama ──> parçalar ──> Claude ──> cevap
+                                                              │  (read_file,
+                                                              └── search_symbol)
+```
+
+### Parçalama
 
 Kod, sabit uzunlukta metin blokları yerine **AST üzerinden** bölünüyor. Her fonksiyon, metot ve
-sınıf ayrı bir parça oluyor. Bunun iki sebebi var: parçalar anlamlı bir bütün olarak kalıyor ve
-her parçanın gerçek satır aralığı biliniyor — `dosya:satır` referansı verebilmenin ön şartı bu.
+sınıf ayrı bir parça oluyor. İki sebebi var: parçalar anlamlı bir bütün olarak kalıyor ve her
+parçanın gerçek satır aralığı biliniyor — `dosya:satır` referansı verebilmenin ön şartı bu.
 
-Çıkarılan parça türleri:
+Diller arasında düğüm adları farklı ama yapı aynı: fonksiyonlar, kapsayıcılar (sınıf/struct/
+arayüz) ve dosya başlığı. `languages.py` bu farkları tek yerde topluyor, çıkarma mantığı ortak.
+Go metotları alıcı tipine bağlanıyor (`OrderService.Create`), C'deki isimsiz struct'lar adını
+saran `typedef`'ten alıyor.
 
 | Tür | İçerik |
 |-----|--------|
-| `module` | Modül docstring'i + import'lar — dosyanın ne yaptığı ve neye bağlı olduğu |
+| `module` | Docstring + import/include'lar + dosya seviyesi sabitler |
 | `class` | Sınıf başlığı + docstring + metot imzaları (gövdeler tekrar edilmiyor) |
-| `function` | Modül seviyesi fonksiyonun tamamı, dekoratörleriyle |
-| `method` | Sınıf içi metodun tamamı, dekoratörleriyle |
+| `function` / `method` | Tam gövde, dekoratörleriyle |
 | `section` | Markdown dosyalarının başlık bazlı bölümleri |
 
-`class` ve `module` parçalarının metni özet olarak üretiliyor (kaynağın birebir kopyası değil),
-diğerleri kaynaktan doğrudan alınıyor.
-
-### Bağlam etiketi (contextual retrieval)
-
-Her parçanın önüne kısa bir konum etiketi ekleniyor (`context` alanı) ve embedding'e parça bu
-etiketle birlikte gidiyor (`Chunk.embed_text`). Kullanıcıya sadece kodun kendisi gösteriliyor.
-Etiket şimdilik deterministik — dosya yolu, nitelenmiş ad, tür ve modül açıklaması. Parçanın ne
-işe yaradığını LLM'e bir cümleyle yazdırmak, ölçüm kurulduktan sonra denenecek iyileştirmelerden.
+Her parçanın önüne konum etiketi ekleniyor (dosya yolu, nitelenmiş ad, tür) ve embedding'e parça
+bu etiketle gidiyor. Kullanıcıya sadece kodun kendisi gösteriliyor.
 
 ### Arama
 
-İki yöntem var ve tasarım varsayımı ikisinin birbirini tamamladığıydı. **Ölçüm bunu kısmen
-çürüttü** — hangisinin kazandığı repoya bağlı, aşağıdaki Ölçüm bölümüne bakın. Yöntemler:
+İki yöntem: **BM25** tam isim eşleşmesinde, **vektör araması** dolaylı anlatımda iyi. Birleştirme
+RRF ile — skorlar değil sıralamalar toplanıyor, böylece iki yöntemin farklı ölçekleri normalize
+edilmek zorunda kalmıyor.
 
-- **BM25** tam isim eşleşmesinde iyi. "`OrderService.create` nerede" sorusunda embedding araması
-  sembolü kaçırabiliyor, BM25 doğrudan buluyor. Kod tokenları ayrıştırılıyor
-  (`getUserOrders` → get, user, orders), yoksa "sipariş id" araması `order_id`'yi bulamıyor.
-- **Vektör araması** dolaylı anlatımlarda iyi. Kodda "ödeme" kelimesi geçmese bile ilgili
-  fonksiyonu getirebiliyor.
+Hangisinin kazandığı repoya bağlı; [Ölçüm](#ölçüm) bölümüne bakın. `--mode` ile seçiliyor.
 
-Birleştirme **RRF** (Reciprocal Rank Fusion) ile: skorlar değil sıralamalar toplanıyor, böylece
-iki yöntemin farklı ölçekleri normalize edilmek zorunda kalmıyor. İki yöntemin de üst sıralarda
-gösterdiği parça öne çıkıyor; sonuçlarda hangi yöntemin getirdiği `(bm25+vector)` olarak
-gösteriliyor. Ağırlıklar `--bm25-weight` / `--vector-weight` ile ayarlanabiliyor — RRF'nin
-zayıf bir sıralayıcıyı da hesaba katması, hibritin bazı repolarda saf vektörün gerisinde
-kalmasının sebebi.
+Vektörler içerik karmasına göre `data/embeddings/` altında önbelleğe alınıyor. Karma, bağlam
+etiketi dahil edilerek hesaplanıyor — sadece kod metni üzerinden alınsaydı bir dosya taşındığında
+önbellekten eski bağlamla üretilmiş vektör dönerdi.
 
-### Embedding sağlayıcısı takılabilir
+### Claude Code entegrasyonu (MCP)
 
-Model iki ayrı yerde kullanılıyor ve bunların yeri değiştirilebilir olması önemli:
-
-| Katman | Ne gönderiliyor | Sağlayıcı |
-|--------|-----------------|-----------|
-| Embedding (indeksleme) | Kod tabanının **tamamı** | `Embedder` arayüzü — Voyage / Ollama / hash |
-| Cevaplama (LLM) | Sadece bulunan parçalar | `codeqa/answer.py` — Claude |
-
-Gizlilik açısından asıl hacim embedding tarafında: indeksleme sırasında kodun her satırı dışarı
-çıkıyor, cevaplama sırasında sadece ilgili parçalar. Müşteri kodunun dışarı çıkamadığı bir projede
-`--provider ollama` ile tüm indeksleme local kalıyor.
-
-Vektörler içerik karmasına göre `data/embeddings/` altında önbelleğe alınıyor; değişmemiş parça
-yeniden embed edilmiyor. Karma `embed_text` (bağlam etiketi + metin) üzerinden alınıyor — sadece
-metin üzerinden alınsaydı bir dosya taşındığında önbellekten eski bağlamla üretilmiş vektör
-dönerdi. Sorgu vektörleri de aynı dosyada önbelleğe alınıyor (`CachedEmbedder`).
-
-#### Hız limiti
-
-Voyage'da ödeme yöntemi eklenmemiş bir hesabın limiti **3 istek/dakika, 10.000 token/dakika**.
-Ödeme yöntemi eklense bile büyük bir müşteri reposunda limite girilir, o yüzden bu sağlayıcının
-kendi içinde çözüldü:
-
-- Yığın boyutu 32 parça — dakikalık token limitini aşmamak için.
-- Hız limiti hatasında artan sürelerle bekleyip yeniden deniyor.
-- Önbellek her yığından sonra diske yazılıyor. Dakikalarca süren bir koşu ortada patlarsa o ana
-  kadarki iş kaybolmuyor, tekrar çalıştırıldığında kalınan yerden devam ediyor.
-
-### Cevaplama
-
-Soru önce hibrit aramaya gidiyor, bulunan parçalar bağlam olarak modele veriliyor. Model eksik
-kalan yerleri iki tool'la kendisi okuyor:
-
-| Tool | Ne yapıyor |
-|------|------------|
-| `read_file` | Repodaki bir dosyayı satır numaralarıyla okur |
-| `search_symbol` | İndekste ikinci bir tur arama yapar |
-
-Tool'lar gerekli çünkü indeks her zaman yetmiyor: bir çağrının gittiği yer indekste ayrı bir
-parça olarak duruyor ve arama onu getirmemiş olabiliyor.
-
-**`read_file` repo köküne hapsedilmiş.** Yol modelden geliyor, yani güvenilmez girdi; `../..`
-ile repo dışına çıkma denemesi reddediliyor ve testlerle sabitlenmiş durumda.
-
-**Referanslar doğrulanıyor.** Model var olmayan bir `dosya:satır` uydurabilir. Cevaptaki her
-referans dosyanın gerçekten var olduğuna ve satırın dosya sınırları içinde kaldığına göre
-kontrol ediliyor; tutmayanlar `⚠ doğrulanamayan referans` olarak gösteriliyor. Kısaltılmış yollar
-(`models.py` yerine `codeqa/models.py`) indekste tek eşleşme varsa kabul ediliyor — bu bir uydurma
-değil, eksik önek. Doğrulama, ölçüm katmanının da temel girdisi olacak.
-
-**Prompt caching açık.** Model her tool turunda tüm geçmişi yeniden gönderiyor; bağlam parçaları
-ve sistem promptu turlar boyunca aynı kalıyor. Önbellek olmadan aynı token'lar tur sayısı kadar
-tekrar faturalanıyor. Ölçülen fark: aynı tipteki bir soruda 42.000 taze girdi token'ı yerine
-8 taze + 18.500 önbellekten.
-
-### Çıktı formatı
-
-`data/chunks.jsonl` — satır başına bir parça:
+Araç MCP sunucusu olarak çalışabiliyor; böylece geliştirici terminale gitmeden Claude Code'un
+içinden kullanıyor. `~/.claude/mcp.json` (ya da istemcinin yapılandırması):
 
 ```json
 {
-  "id": "api/orders.py::OrderService.create#42",
-  "kind": "method",
-  "path": "api/orders.py",
-  "name": "OrderService.create",
-  "start_line": 42,
-  "end_line": 67,
-  "location": "api/orders.py:42",
-  "signature": "async def create(self, payload: dict) -> int:",
-  "docstring": "...",
-  "context": "api/orders.py > OrderService.create (method)",
-  "text": "...",
-  "content_hash": "9f2c..."
+  "mcpServers": {
+    "codeqa": {
+      "command": "/yol/staj/.venv/bin/python",
+      "args": ["-m", "codeqa", "serve", "-i", "data/chunks.jsonl", "--provider", "voyage"],
+      "cwd": "/yol/staj"
+    }
+  }
 }
 ```
 
-`content_hash`, değişmemiş parçaların yeniden embed edilmemesi için — API maliyetini düşük tutmanın
-ilk adımı.
+Sunulan tool'lar:
 
-### Ölçüm
+| Tool | Ne yapar |
+|------|----------|
+| `search_code` | İndekste doğal dilde arama, `dosya:satır` konumlarıyla |
+| `read_chunk` | Bulunan bir parçanın tam metnini getirir |
+| `index_status` | İndeksin hangi repoyu, kaç parçayı, hangi dilleri kapsadığını söyler |
 
-20 soruluk set `eval/questions.json`'da; her sorunun cevabının hangi dosyada olduğu elle
-işaretlenmiş. İki şey ayrı ölçülüyor, çünkü ayrı ayrı bozulabiliyorlar:
+**Cevaplama (`ask`) bilerek sunulmuyor.** MCP istemcisi zaten bir dil modeli; ona ikinci bir
+modelin ürettiği cevabı vermek yerine ham arama sonuçlarını vermek hem ucuz hem daha doğru —
+istemci kendi bağlamıyla yorumluyor.
 
-- **Getirme** — arama doğru parçayı ilk k sonuca soktu mu? API çağrısı yok, saniyeler sürüyor.
-- **Cevap** — model doğru dosyaya referans verdi mi? Claude çağırıyor, yavaş ve paralı.
+### Cevaplama
 
-Getirme bozuksa cevap da bozulur, ama tersi doğru değil: arama doğru parçayı getirip model yine
-de yanlış cevap verebilir. Ayrı ölçülmezse hangisini düzelteceğin belli olmuyor.
+Bulunan parçalar bağlam olarak modele veriliyor; model eksik kalanı iki tool'la kendisi okuyor:
+`read_file` (dosyayı satır numaralarıyla) ve `search_symbol` (ikinci tur arama).
+
+Üç şey önemli:
+
+**`read_file` repo köküne hapsedilmiş.** Yol modelden geliyor, yani güvenilmez girdi; `../..` ile
+dışarı çıkma denemesi reddediliyor, testlerle sabit.
+
+**Referanslar doğrulanıyor.** Model var olmayan bir `dosya:satır` uydurabilir. Her referans dosya
+ve satır sınırına göre kontrol ediliyor, tutmayanlar işaretleniyor. Kısaltılmış yollar
+(`models.py` → `codeqa/models.py`) indekste tek eşleşme varsa kabul ediliyor; birden fazla
+eşleşme varsa cevabın kendi içinde tam yazılmış yollar bağlam olarak kullanılıyor.
+
+**Prompt caching açık.** Model her tool turunda geçmişi yeniden gönderiyor. Ölçülen fark: aynı
+soruda 42.000 taze girdi token'ı yerine 8 taze + 18.500 önbellekten.
+
+## Ölçüm
+
+Ölçüm düzeneği aracın bir parçası, yan ürünü değil — çünkü **doğru yapılandırma repoya göre
+değişiyor** ve bunu ancak ölçerek bulabiliyorsunuz.
 
 ```bash
-.venv/bin/python -m codeqa eval                    # sadece getirme (bedava)
-.venv/bin/python -m codeqa eval --answers          # cevapları da ölç (ücretli)
+codeqa eval -q eval/questions_anthropic.json --split test    # getirme, bedava
+codeqa eval -q eval/questions_anthropic.json --answers       # cevap, ücretli
 ```
 
-Koşular `runs/` altına JSON olarak yazılıyor, aynı ölçüm için tekrar API çağrısı yapılmıyor.
+İki şey ayrı ölçülüyor: **getirme** (arama doğru parçayı ilk k'ya soktu mu — API çağrısı yok) ve
+**cevap** (model doğru dosyaya referans verdi mi — Claude çağırıyor). Getirme bozuksa cevap da
+bozulur ama tersi doğru değil; ayrı ölçülmezse hangisinin düzeltileceği belli olmuyor.
 
-#### Ölçüm sonuçları (12.08.2026, 20 soru, 249 parça)
+**dev/test ayrımı var.** Ayarlar yalnızca dev'de denenir, rapor test'ten alınır. Aynı set üzerinde
+hem ayar yapıp hem rapor etmek, ayarı o setin gürültüsüne uydurmak demek.
 
-| Embedder | Nerede | Mod | recall@8 | sembol recall | MRR |
-|----------|--------|-----|----------|---------------|-----|
-| `hash` (yer tutucu) | — | BM25 | 95% | 70% | 0.560 |
-| `hash` | — | Vektör | 75% | 50% | 0.375 |
-| `hash` | — | Hibrit | 85% | 60% | 0.403 |
-| **`voyage-code-3`** | bulut | BM25 | 95% | 70% | 0.560 |
-| **`voyage-code-3`** | bulut | Vektör | **100%** | **100%** | 0.650 |
-| **`voyage-code-3`** | bulut | **Hibrit** | **100%** | 90% | **0.702** |
-| **`voyage-code-3` + `rerank-2.5`** | bulut | **Hibrit** | **100%** | **100%** | **0.750** |
-| `nomic-embed-text` | local | BM25 | 95% | 70% | 0.560 |
-| `nomic-embed-text` | local | Vektör | 50% | 60% | 0.243 |
-| `nomic-embed-text` | local | Hibrit | 65% | 60% | 0.302 |
+### Sonuçlar
 
-Baseline'dan (hash + hibrit) final sürüme (voyage + hibrit + reranking):
-**recall %85 → %100, sembol recall %60 → %100, MRR 0.403 → 0.750.**
+Kurulum: `anthropic` Python SDK'sı — 1097 dosya, 4311 parça. 60 soru (40 dev / 20 test), her
+sorunun cevabının hangi dosyada olduğu elle işaretlenmiş.
 
-Okunacak üç şey var:
+**Cevap doğruluğu (test bölmesi, 20 soru):**
 
-1. **Hibrit aramanın değeri embedding kalitesine bağlı, bedava gelen bir kazanç değil.** Yer tutucu
-   embedder ile hibrit, BM25'ten *daha kötüydü* (0.403'e karşı 0.560) — çünkü RRF sıralamaları
-   harmanlıyor ve zayıf bir sıralayıcı iyisini aşağı çekiyor. Gerçek embedder ile tablo tersine
-   döndü. Ölçüm olmasaydı bu görülmezdi.
-2. **BM25 satırları iki embedder'da birebir aynı** (95% / 0.560). Beklenen sonuç, çünkü BM25
-   embedding kullanmıyor — ölçüm düzeneğinin doğru şeyi ölçtüğünün iç tutarlılık kontrolü.
-3. **Hibrit sıralamada en iyi (MRR 0.702), ama sembol recall'da vektörün gerisinde** (%90'a karşı
-   %100). Yani BM25'i harmanlamak genel sıralamayı iyileştirirken bir soruda doğru sembolü
-   ilk k'nın dışına itiyor. Reranking'in bakacağı yer burası.
+| Metrik | Sonuç |
+|--------|-------|
+| Doğru cevap oranı | **100%** |
+| Beklenen dosya kapsamı | 100% |
+| Uydurma referans | 0 |
 
-#### Reranking
+**Akış soruları (20 soru, çok dosyalı):**
 
-`rerank-2.5` hibrit aramanın ilk 20 adayını alıp soruya göre yeniden sıralıyor. Ölçülen etki:
+Kolay setin tamamı "X nerede" tipindeydi ve cevap doğruluğu %100'e vurdu — yani iyileştirme
+ölçülemez hâle geldi. Projenin asıl vaadi ise akış takibi ("nerede başlıyor, nereye gidiyor"),
+ki o hiç ölçülmemişti. `eval/questions_akis.json` bunu ölçüyor: her sorunun cevabı 2-4 dosyaya
+yayılıyor.
 
-| Metrik | Reranking'siz | Reranking'li |
-|--------|---------------|--------------|
-| recall@8 | 100% | 100% |
-| sembol recall | 90% | **100%** |
-| MRR | 0.702 | **0.750** |
+| Set | recall@8 | MRR | **kapsam** |
+|-----|----------|-----|------------|
+| Kolay (tek konum, 60 soru) | 93% | 0.761 | 92% |
+| **Zor (akış, 20 soru)** | **100%** | **0.846** | **80%** |
 
-Soru bazında: **6 soru iyileşti, 3 soru kötüleşti, 11 soru değişmedi.** En büyük kazanç q02'de
-(8. sıradan 2. sıraya). Kötüleşenler 1. sıradan 2-3. sıraya düşenler — yani hâlâ ilk 3'te,
-kaybedilmiş değil.
+Zor sette recall'ın daha yüksek çıkması iyi haber değil — **metriğin yanlış olduğunu gösteriyor.**
+Çok dosyalı soruda "en az bir beklenen dosyayı bulduysan başarılı" saymak kolay: üç dosyadan
+birini bulmak yetiyor. Asıl ölçüt **kapsam** ve orada %92'den %80'e düşüyor.
 
-Beklendiği gibi **recall değişmedi**: reranker sadece elde kalan adaylara bakıyor, arama bir
-parçayı hiç getirmediyse onu kurtaramıyor. Düzelttiği şey sıralama.
+Yani araç akış sorularında da doğru yere gidiyor ama zincirin tamamını getiremiyor: ortalama her
+beş dosyadan biri ilk 8'in dışında kalıyor. İyileştirme çalışmasının ölçüleceği yer burası.
 
-**Bedava değil:** her sorgu için ek bir API çağrısı demek. Ücretsiz kotadaki hız limitiyle
-(3 istek/dakika) 20 soruluk ölçüm koşusu ~7 dakika sürdü. Etkileşimli kullanımda sorgu başına
-bir tur ek gecikme ekliyor. Varsayılan olarak kapalı; `--rerank voyage` ile açılıyor.
+**Çeşitlilik slotları (test bölmesi, hiç ayar yapılmamış veri):**
 
-#### Local model (Ollama) — müdürün sorusunun cevabı
+Teşhis: ilk 8 sonuçta ortalama yalnızca **3,1 farklı dosya** vardı. 160 slotun 98'i zaten listede
+olan bir dosyanın tekrarıydı — arama doğru bölgeyi buluyor, sonra o bölgeyi tekrar tekrar
+getiriyor ve zincirin ikinci halkasına yer kalmıyordu. Çözüm ilk k sonucun arkasına henüz temsil
+edilmemiş dosyaların en iyi parçasını eklemek (`DIVERSITY_SLOTS`, varsayılan 4).
 
-`nomic-embed-text` ile local kurulum çalışıyor ama kalite belirgin şekilde düşük: hibritte
-recall %100 → %65, MRR 0.702 → 0.302. İki not:
+| Set (test bölmesi) | | recall@8 | MRR | **kapsam** |
+|--------------------|---|----------|-----|------------|
+| Akış (10 soru) | önce | 100% | 0.914 | 85% |
+| Akış (10 soru) | **sonra** | 100% | 0.914 | **90%** |
+| Kolay (20 soru) | önce | 90% | 0.850 | 90% |
+| Kolay (20 soru) | **sonra** | **100%** | **0.860** | **100%** |
 
-- **Görev öneki şart.** Nomic ailesi metnin başına `search_document: ` / `search_query: `
-  bekliyor. Öneksiz recall %40'tı, önekle %50'ye çıktı — yani önek gerçek ama tek başına
-  açığı kapatmıyor. Kod `TASK_PREFIXES` ile bunu modele göre otomatik ekliyor.
-- **Fark ağırlıkla model kapasitesinde, dilde değil.** Türkçe/İngilizce aynı soruyu sorup
-  karşılaştırdım: 3 denemenin 1'inde İngilizce belirgin daha iyi, 2'sinde fark yok. Asıl sebep
-  `voyage-code-3`'ün kod için özel eğitilmiş olması, `nomic-embed-text`'in genel amaçlı bir metin
-  modeli olması.
+Ayar yalnızca dev bölmesinde seçildi, tablodaki sayılar hiç dokunulmamış test bölmesinden.
+Hiçbir metrik gerilemedi. Koşular: `runs/*-test-div{0,4}.json`.
 
-Hız tarafı tersine dönüyor: local'de 249 parça **7,5 saniyede** embed edildi, Voyage'da hız limiti
-yüzünden dakikalar sürdü.
+**Getirme (60 soru, saf vektör):**
 
-**Karar için:** kaynak kodun dışarı çıkamadığı bir müşteride local kurulum çalışır ama arama
-kalitesi düşer — bu durumda BM25 ağırlıklı bir yapılandırma (local vektörden daha iyi: %95'e
-karşı %50) daha mantıklı. Kodun dışarı çıkabildiği yerlerde `voyage-code-3` açık ara önde.
-Denenmemiş orta yol: `bge-m3` gibi daha güçlü bir local model.
+| Aşama | recall@8 | MRR |
+|-------|----------|-----|
+| Başlangıç | 87% | 0.714 |
+| + modül sabitleri indekslendi | 88% | 0.727 |
+| + soru etiketleri düzeltildi\* | 93% | 0.761 |
 
-#### Büyük repo ölçümü — `anthropic` Python SDK
+\* Bu satır sistem iyileşmesi değil, ölçüm düzeltmesi: cevabı birden fazla dosyada olan sorulara
+tek dosya yazmışız, araç doğru cevap getirdiği hâlde "hata" sayılıyormuş.
 
-Küçük set (kendi repomuz, 249 parça, 20 soru) yanıltıcıydı. Gerçek boyutta bir üçüncü taraf
-repoda ölçüm: **1097 dosya, 4310 parça, 60 soru** (40 dev / 20 test). Ayarlar yalnızca dev'de
-denendi, aşağıdaki sayılar **hiç dokunulmamış test bölmesinden**.
+**Embedding sağlayıcıları (60 soru, hibrit):**
 
-| Mod | test recall@8 | sembol recall | test MRR |
-|-----|---------------|---------------|----------|
-| **Vektör** | **85%** | **100%** | **0.742** |
-| Hibrit | 80% | 100% | 0.581 |
-| BM25 | 15% | 95% | 0.025 |
+| Sağlayıcı | Nerede | recall@8 | MRR |
+|-----------|--------|----------|-----|
+| `voyage-code-3` | bulut | 100% | 0.702 |
+| `bge-m3` | local | 100% | 0.654 |
+| `nomic-embed-text` | local | 65% | 0.302 |
+| `hash` (yer tutucu) | — | 85% | 0.403 |
 
-**Hibrit arama bu repoda işe yaramıyor — saf vektör araması daha iyi.** Projenin baştaki
-tasarım tercihlerinden biri, gerçek boyutta bir repoda doğrulanmadı.
+## Öğrenilenler
 
-Sebebi BM25'in çökmesi (recall %15). Küçük repoda BM25 %95'ti; aradaki fark **dil**: kendi
-kodumuzun yorumları Türkçe, `anthropic` SDK'sı tamamen İngilizce. Türkçe sorgu kelimeleri
-İngilizce kodda sözcük olarak hiç geçmiyor, dolayısıyla BM25'in tutunacağı bir şey kalmıyor.
-RRF zayıf sıralayıcıyı da hesaba kattığı için hibrit, saf vektörü aşağı çekiyor.
+Bu bölüm sonuçların en değerli kısmı: neyin işe yaramadığı da veriyle biliniyor.
 
-Denenen çözüm: sorguyu Haiku ile İngilizceye çevirip BM25'e vermek. BM25'i belirgin şekilde
-kurtardı (recall %15 → %57, MRR 0.078 → 0.290) ama hibrit yine saf vektörü geçemedi
-(0.522'ye karşı 0.665, dev bölmesinde). Yani çeviri doğru teşhis ama yeterli tedavi değil.
+### Getirme mükemmel olmak zorunda değil
 
-**Buradan çıkan asıl sonuç:** doğru arama modu repoya göre değişiyor. Türkçe yorumlu küçük
-repoda hibrit kazandı, İngilizce büyük repoda saf vektör. Araç bunu varsayım olarak sabitlemek
-yerine **her müşteri kod tabanında ölçüp seçmeli** — ölçüm katmanı bu yüzden aracın kendisinin
-bir parçası, yan ürünü değil.
+Getirme recall'ı %88 ama cevap doğruluğu %100. Bir soruda arama doğru parçayı ilk 8'e sokamadı,
+model `search_symbol` ile kendisi bulup doğru cevap verdi. **Recall'ı tek başına kalite göstergesi
+saymak yanlış olurdu** — tool katmanının varlık sebebi tam olarak bu.
 
-Bir yan bulgu: tokenizer Türkçe harfleri ayraç sayıyordu (`aşımı` → `a` + `m`). Düzeltildi;
-Türkçe yorumlu kod tabanlarında ve Türkçe sorgularda BM25'i doğrudan etkiliyordu.
+### Hibrit arama bedava kazanç değil
 
-#### Contextual retrieval — ölçüldü, beklenenden az işe yaradı
+Küçük repoda (Türkçe yorumlu, 249 parça) hibrit en iyisiydi. Büyük repoda (İngilizce, 4311 parça)
+**saf vektör hibriti geçti** — BM25 recall'ı %95'ten %15'e düştü.
 
-Her parça için Haiku'ya "bu parça dosyanın bütününde ne işe yarıyor" diye Türkçe tek cümle
-yazdırıldı ve embedding'e katıldı (4310 parçanın %96'sı; kalanı kredi bitmesi yüzünden eksik).
+Sebep dil: Türkçe sorgu kelimeleri İngilizce kodda geçmiyor, BM25'in tutunacağı yer kalmıyor.
+RRF zayıf sıralayıcıyı da hesaba kattığı için hibrit, saf vektörü aşağı çekiyor. Sorguyu
+İngilizceye çevirmek BM25'i kısmen kurtarıyor (%15 → %57) ama hibrit yine saf vektörü geçemiyor.
 
-60 sorunun tamamında:
+**Çıkarım:** arama modu sabitlenmemeli, her müşteri kod tabanında ölçülüp seçilmeli.
 
-| Yöntem | Bağlamsız | Bağlamlı | Fark |
-|--------|-----------|----------|------|
-| Vektör recall@8 | 85% | 87% | +2 puan |
-| Vektör MRR | 0.690 | 0.714 | +0.024 |
-| BM25 recall@8 | 15% | **47%** | **+32 puan** |
-| BM25 MRR | 0.060 | **0.231** | **~4 kat** |
+### Local model kullanılabilir — ama modeli doğru seçmek şartıyla
 
-**BM25 için büyük kazanç, vektör için kayda değmez.** Türkçe cümleler indekse Türkçe metin
-koyduğu için BM25'e tutunacak yer verdi — tahmin edilen etkiydi ve gerçekleşti. Ama asıl
-kullanılan yol vektör araması ve orada fark ölçüm gürültüsü mertebesinde.
+`nomic-embed-text` ile recall %65, `bge-m3` ile %100. İlk ölçümde "local model kalite
+kaybettiriyor" sonucuna varmak yanlış olurdu; kaybettiren local olmak değil, zayıf modeldi.
+Doğru local modelle buluttan fark MRR'da 0.05.
 
-Maliyet tarafı: yaklaşık 5-7 dolar ve saatlerce koşu, +0.024 MRR için. **Bu repoda contextual
-retrieval masrafını çıkarmıyor.**
+Bu, "müşteri kodu dışarı çıkamıyor" kısıtı olan projelerde aracın kullanılabilir olduğu anlamına
+geliyor. `nomic-embed-text` ayrıca görev öneki (`search_document:` / `search_query:`) istiyor;
+öneksiz recall %40'a düşüyor.
 
-Neden Anthropic'in yayınladığı büyük kazançlar burada çıkmadı? Muhtemelen **baseline zaten zayıf
-olmadığı için**: parçalar AST ile bölündüğünden anlamsal bütünlüğünü koruyor ve her parça
-hâlihazırda deterministik bir bağlam etiketi taşıyor (dosya yolu, nitelenmiş ad, tür, modül
-açıklaması). Contextual retrieval'ın asıl değeri sabit uzunlukta bölünmüş, bağlamsız parçalarda
-ortaya çıkıyor. Teknik yanlış değil — bu boru hattı için gereksiz.
+### Contextual retrieval masrafını çıkarmadı
 
-Bölmeler arası salınıma dikkat: test bölmesinde vektör recall %85 → %95 görünüyor, dev bölmesinde
-%85 → %82. 20 ve 40 soruluk bölmelerde bu normal; **60 sorunun tamamındaki +2 puan gerçek etkiye
-daha yakın.** Tek bir bölmedeki sıçramayı sonuç diye raporlamak, tam da kaçınmaya çalıştığımız
-hata olurdu.
+Her parça için LLM'e bağlam cümlesi yazdırmak: vektör aramasında +2 puan recall, +0.024 MRR.
+Maliyet ~5-7 dolar ve saatlerce koşu. BM25'i belirgin şekilde kurtardı (%15 → %47) ama asıl
+kullanılan yol vektör araması.
 
-**Küçük setin çekincesi:** 20 soruda bir soru %5 demek. Yukarıdaki büyük repo ölçümü bu
-setin ne kadar iyimser olduğunu somut olarak gösterdi — %100 recall, gerçek boyutta %85'e indi.
+Muhtemel sebep: **baseline zaten zayıf değildi.** Parçalar AST ile bölünüyor ve hâlihazırda
+deterministik bağlam etiketi taşıyor. Bu tekniğin asıl değeri sabit uzunlukta bölünmüş, bağlamsız
+parçalarda ortaya çıkıyor.
 
-Cevap tarafı 5 soruluk örneklemde: doğruluk %100, dosya kapsamı %100, uydurma referans 0.
-Tam 20 soruluk cevap ölçümü henüz koşulmadı.
+### Reranking ile ağırlık ayarı birbirinin yerine geçiyor
 
-## Doğrulama
+Reranking MRR'ı 0.702 → 0.750 çıkardı. RRF ağırlıklarını ayarlamak (bedava, API çağrısı yok)
+0.738'e çıkardı. İkisi birlikte yine 0.750 — reranker sıralamayı baştan kurduğu için ağırlığın
+etkisini siliyor.
 
-Sembol çıkarıcı, `anthropic` SDK'sı üzerinde denendi: **1097 dosya, 4310 parça, 0 hata**.
-Rastgele seçilen 500 parçanın satır aralıkları kaynak dosyalarla karşılaştırıldı, hepsi tuttu.
-Aynı repo uçtan uca indekslenip aranabiliyor. **128 birim testi** var (`tests/`); testler ağ
-erişimi ve API anahtarı olmadan çalışıyor — cevaplama katmanında tool gövdeleri, bağlam kurma
-ve referans doğrulama test ediliyor, tool döngüsünü SDK yürütüyor.
+### Kendi metriğini ödüllendiren bir iyileştirme, iyileştirme değildir
+
+Akış kapsamını artırmak için önce **sert kota** denendi: ilk k içinde dosya başına en fazla 1
+parça. Kapsam anında yükseldi (akış 0.750 → 0.867, kolay 0.925 → 0.950) ve karar verilebilirdi.
+
+Verilmedi, çünkü kapsam metriği dosya çeşitliliğini ödüllendiriyor ve kota tam olarak çeşitliliği
+artırıyor — müdahale kendi ölçütünü tanım gereği memnun ediyordu. Döngüyü kıracak bağımsız bir
+ölçüte bakıldı: **sembol isabeti** (doğru dosyanın doğru fonksiyonu geldi mi). Orada sonuç
+**0.778 → 0.444** düştü.
+
+Sebep tek tek incelendi: iki ilgili parça gerçekten aynı dosyada olabiliyor — sync/async ikizleri,
+decoder + accumulator çifti — ve sert kota bunlardan birini kesiyordu. Bir vaka ise ölçüm
+artefaktıydı: beklenen `Anthropic.copy`, kota `AsyncAnthropic.copy`'yi tutmuştu; cevap aynı,
+etiket ikizlerden birini yazdığı için hata sayılıyordu.
+
+Yumuşak ceza da çare olmadı. RRF skorları `1/(60+sıra)` biçiminde olduğu için fazla sıkışık:
+0.8'in altındaki her çarpan pratikte sert kotaya dönüşüyor, üstündeki hiçbir şey yapmıyor.
+
+Çalışan yaklaşım **hiçbir şeyi elemeyen** genişletme oldu: ilk k dokunulmadan kalıyor, arkasına
+yeni dosyalar ekleniyor. Kritik kontrol, kazancın "daha çok parça verdik"ten gelmediğini
+göstermek oldu — eşit bütçede (12 parça) düz top-12 akış kapsamını 0.750'de bırakıyor, genişletme
+0.833'e çıkarıyor.
+
+### Denenip kapatılan: tip-only parçaları geri plana atmak
+
+İndeksin %42'si üretilmiş tip tanımı ve bunlar bazı sorularda gerçek cevabı ilk 8'in dışına
+itiyor. Metotsuz sınıfların ağırlığını düşürmek mantıklı görünüyordu ama **MRR'ı 0.761'den
+0.754'e düşürdü.** Kod duruyor, varsayılan kapalı (`weigh_chunks=True` ile açılıyor).
+
+Not: "generated" dosya işareti kullanılamaz bir sinyal — bu SDK'da dosyaların %92'si öyle
+işaretli, sorularımızın gerçek cevapları dahil.
 
 ## Dosya yapısı
 
@@ -375,36 +340,25 @@ codeqa/
   docs.py        Markdown parçalayıcı
   embeddings.py  sağlayıcı arayüzü (Voyage / Ollama / hash) + disk önbelleği
   search.py      BM25, vektör araması, RRF birleştirme
-  answer.py      Claude + tool'lar (read_file, search_symbol), referans doğrulama
-  rerank.py      Voyage rerank-2.5 ile yeniden sıralama
-  contextual.py  LLM ile bağlam cümlesi üretimi (contextual retrieval)
+  rerank.py      Voyage rerank-2.5
+  contextual.py  LLM ile bağlam cümlesi üretimi
+  answer.py      Claude + tool'lar, referans doğrulama
   evaluation.py  soru seti, getirme ve cevap metrikleri
+  languages.py   tree-sitter ile C/C++/Java/C#/Go/TS/JS sembol çıkarma
+  mcp_server.py  MCP sunucusu (search_code, read_chunk, index_status)
   cli.py         komut satırı arayüzü
-eval/            soru setleri (küçük + büyük)
-tests/           birim testleri
-data/            indeks ve vektör çıktıları (git'e girmez)
-runs/            ölçüm koşuları (git'e girmez)
+eval/            soru setleri (kendi repo 20, anthropic SDK 60 kolay + 20 akış)
+tests/           182 birim testi — ağ ve API anahtarı gerektirmiyor
+data/, runs/     üretilen çıktılar (git'e girmez)
 ```
 
 ## Sıradaki adımlar
 
-1. **Daha güçlü bir local model dene** — `bge-m3`. `nomic-embed-text` ile açık büyük çıktı;
-   local seçeneğin gerçekten kullanılabilir olup olmadığı buna bağlı.
-2. **Tam 20 soruluk cevap ölçümü** — şimdilik sadece 5 soruluk örneklem koşuldu.
-3. **Soru setini zorlaştır** — recall %100'e çarptı, bu set artık bulut tarafında iyileşme
-   ölçemiyor. Daha büyük bir repo ya da daha zor sorular gerekiyor.
-4. **Entegrasyon** — Claude Code / MCP.
-
-### Açık konular
-
-- Ollama ile local model kullanımının gerekçesi: müşteri kodu gizliliği bir zorunluluk mu, yoksa
-  karşılaştırma amaçlı bir opsiyon mu? (Mimari her iki cevaba da hazır, ama hangi sağlayıcının
-  varsayılan olacağı ve local modelin ölçüleceği bu cevaba bağlı.)
-- Test için kullanılacak örnek repo seçilecek
-
-### Doğrulanan konular
-
-- Embedding modeli: `voyage-code-3` — kod için önerilen model, 1024 boyut, 32k bağlam
-  ([Voyage dokümantasyonu](https://docs.voyageai.com/docs/embeddings), 10.08.2026)
-- Cevaplama katmanı için model isimleri: `claude-opus-5` (ana katman), `claude-haiku-4-5`
-  (hacimli basit işler ve değerlendirme çağrıları)
+1. **Akış sorularında kapsamı yükseltmek** — %80'de; zincirin tamamını getirmek için
+   HyDE (soruya cevap olabilecek sahte kod üretip onu embed etmek) denenmeli.
+2. **Çok dilli ölçüm** — diller kod tarafında destekleniyor ama doğruluk yalnızca Python
+   üzerinde ölçüldü. Java ya da C++ bir repoda soru seti hazırlanıp tekrarlanmalı.
+3. **Demo** — müdüre gösterilecek akış.
+4. **Cevap tarafını zor sette ölçmek** — getirme ölçüldü, cevap ölçümü (ücretli) bekliyor.
+5. **`types/` gürültüsü** — 4 soruda gerçek cevap hâlâ üretilmiş tip tanımlarının altında
+   kalıyor; ağırlık düşürmek yetmedi, başka bir yaklaşım gerekiyor.
