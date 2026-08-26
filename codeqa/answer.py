@@ -23,6 +23,16 @@ from .search import HybridSearch, SearchHit
 #: `claude-haiku-4-5` kullanılabilir — `model` parametresiyle değiştirilebilir.
 DEFAULT_MODEL = "claude-opus-5"
 
+#: Adaptive thinking'i destekleyen model aileleri. Haiku desteklemiyor ve
+#: istek `adaptive thinking is not supported on this model` ile 400 dönüyor —
+#: yani ucuz modelle ölçüm yapmak isteyen herkes bu duvara çarpıyor.
+THINKING_MODELS = ("claude-opus", "claude-sonnet")
+
+
+def supports_adaptive_thinking(model: str) -> bool:
+    return model.startswith(THINKING_MODELS)
+
+
 #: Modelin tool çağrısı yapabileceği tur sayısı. Sonsuz döngüye karşı sınır.
 MAX_ITERATIONS = 12
 
@@ -265,10 +275,13 @@ class CodebaseAnswerer:
         self._tool_calls = []
 
         client = self._get_client()
+        # `thinking` yalnızca destekleyen modellere gönderiliyor; Haiku'ya
+        # gidince istek 400 ile reddediliyor.
+        extra = {"thinking": {"type": "adaptive"}} if supports_adaptive_thinking(self.model) else {}
         runner = client.beta.messages.tool_runner(
             model=self.model,
             max_tokens=16000,
-            thinking={"type": "adaptive"},
+            **extra,
             system=SYSTEM_PROMPT,
             tools=self._build_tools(),
             messages=self.build_messages(question, hits),

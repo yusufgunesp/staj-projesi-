@@ -1,0 +1,132 @@
+{
+  "_aciklama": "ÇOK ZOR SET — akış seti de tavana vurduğu için hazırlandı (getirme kapsamı %90, cevap doğruluğu %100). Bu set üç eksende zorlaştırıyor: (1) TUZAK — doğru dosyanın neredeyse birebir ikizleri var (lib/aws vs lib/bedrock aynı fonksiyon adlarını taşıyor, _messages vs _beta_messages, sync/async çiftleri), embedding araması yanlış varyantı getirmeye eğilimli; (2) ÇAPASIZ — soru kelimeleri kodda geçmiyor, lib/credentials altındaki dokuz dosyanın hiçbirinde modül docstring'i bile yok; (3) GENİŞ — cevap 2-4 değil 3-5 dosyaya yayılıyor. Sorular davranış soruyor ('kaç kez çalışır', 'hangisi fiilen kullanılıyor'), konum değil. Beklenen dosyaların tamamı kaynak kodda okunarak doğrulandı; her sorunun `note` alanı doğrulamanın nereye dayandığını yazıyor.",
+  "repo": ".venv/lib/python3.14/site-packages/anthropic",
+  "index": "data/anthropic.jsonl",
+  "questions": [
+    {
+      "id": "z01",
+      "split": "dev",
+      "question": "Yeniden deneme aralarındaki bekleme süresi kaç ayrı yerde hesaplanıyor ve bunlardan hangisi fiilen çalışıyor?",
+      "expect_files": [
+        "lib/_retry.py",
+        "lib/environments/_poller.py",
+        "lib/tools/_beta_session_runner.py"
+      ],
+      "note": "Üç ayrı şema var. lib/_retry.py paylaşılan backoff/jitter'ı tanımlıyor ve docstring'i 'poller, session tool runner ve worker aynı hesabı kullansın diye çıkarıldı' diyor. Ama _poller.py satır 11'de backoff/jitter'ı import ettiği hâlde satır 30-34'te kendi _backoff/_jitter'ını tanımlıyor ve fiilen onları kullanıyor (128, 137, 152, 221, 230, 245) — import edilenler gölgeleniyor. _beta_session_runner.py ise üçüncü bir şema kullanıyor: STREAM_BACKOFF_START'tan başlayıp ikiye katlayarak STREAM_BACKOFF_CAP'e kadar (632-674)."
+    },
+    {
+      "id": "z02",
+      "split": "dev",
+      "question": "Bir istek üç kez yeniden denenirse, kullanıcının taktığı ara katman kaç kez çalışır?",
+      "expect_files": [
+        "_middleware.py",
+        "_base_client.py"
+      ],
+      "note": "_middleware.py'deki CallNext docstring'i açık: zincir SDK'nın yeniden deneme döngüsünün İÇİNDE, deneme başına bir kez çalışıyor. Yani üç denemede üç kez. Ayrıca 4xx/5xx dahil her HTTP cevabı için APIResponse dönüyor; tipli hatalar zincirden sonra fırlatılıyor. Zincirin kurulduğu ve çağrıldığı yer _base_client.py (96-104, 391-414, 755-761, 883)."
+    },
+    {
+      "id": "z03",
+      "split": "dev",
+      "question": "Bir yardımcı, ana istemcinin zaman aşımı ve yeniden deneme ayarlarını koruyup yalnızca kimlik bilgisini değiştirmek istediğinde hangi ortak yol kullanılıyor, kimler kullanıyor?",
+      "expect_files": [
+        "lib/_scoped_client.py",
+        "lib/tools/_beta_session_runner.py",
+        "lib/environments/_worker.py"
+      ],
+      "note": "_copy_client_with_bearer_auth tek ortak kurulum (lib/_scoped_client.py:30). İki kullanıcı: _beta_session_runner.py:34,297 (helper='session-tool-runner') ve _worker.py:42,311,393. Ana istemcinin timeout/max_retries/http_client/default_headers/default_query'sini miras alıp yalnızca auth'u değiştiriyor ve x-stainless-helper başlığı ekliyor."
+    },
+    {
+      "id": "z04",
+      "split": "dev",
+      "question": "İstemci hiçbir anahtar verilmeden açıldığında kimlik bilgisi hangi kaynaklardan, hangi öncelik sırasıyla bulunuyor?",
+      "expect_files": [
+        "lib/credentials/_chain.py",
+        "lib/credentials/_providers.py",
+        "_client.py"
+      ],
+      "note": "default_credentials (lib/credentials/_chain.py) çözümü yapıyor, _client.py:262 ve :682'den çağrılıyor (sync ve async istemci). Sağlayıcı türleri _providers.py'de: StaticToken, EnvToken, CredentialsFile, IdentityTokenFile, InMemoryConfig. _chain.py ayrıca ortam değişkeni federasyon yolu için _build_federation_result'ı taşıyor."
+    },
+    {
+      "id": "z05",
+      "split": "dev",
+      "question": "Önbellekteki bir erişim anahtarı ne zaman yenileniyor, aynı anda iki istek yenilemeye kalkarsa ne oluyor?",
+      "expect_files": [
+        "lib/credentials/_cache.py",
+        "lib/credentials/_types.py"
+      ],
+      "note": "TokenCache iki katmanlı: expires_at=None ise sonsuza dek önbellekten; advisory eşiğinden fazla süre kaldıysa önbellekten; advisory ile mandatory arasında tek-uçuş (single-flight) yenileme — başka biri zaten yeniliyorsa advisory çağıran beklemeden önbellektekini alıyor, ikinci yenileme yapılmıyor (_cache.py:26-38). Başarısızlıktan sonra bir süre advisory yenileme atlanıyor (satır 19). _types.py invalidate sözleşmesini ve 401 sonrası davranışı belgeliyor (20, 44, 47)."
+    },
+    {
+      "id": "z06",
+      "split": "dev",
+      "question": "Dışarıdan gelen bir kimlik belgesi Anthropic erişim anahtarına nasıl çevriliyor, bu çevrim başarısız olursa hata mesajına ne konuyor?",
+      "expect_files": [
+        "lib/credentials/_workload.py",
+        "lib/credentials/_chain.py"
+      ],
+      "note": "WorkloadIdentityCredentials, OIDC JWT'sini POST /v1/oauth/token ile RFC 7523 jwt-bearer akışında değiş tokuş ediyor (exchange_federation_assertion). Hata durumunda _redact_body gövdeyi kısaltıp maskeliyor, _raise_token_endpoint_error WorkloadIdentityError fırlatıyor. Federasyon yolunun zincire bağlandığı yer _chain.py:_build_federation_result."
+    },
+    {
+      "id": "z07",
+      "split": "test",
+      "question": "AWS üzerinden iki ayrı bağlanma yolu var; istek imzalama başlıkları her biri için nerede üretiliyor ve nerede ayrışıyorlar?",
+      "expect_files": [
+        "lib/aws/_auth.py",
+        "lib/bedrock/_auth.py",
+        "lib/aws/_credentials.py"
+      ],
+      "note": "TUZAK SORUSU: lib/aws/_auth.py ve lib/bedrock/_auth.py ikisi de _get_session ve get_auth_headers adlı fonksiyonları tanımlıyor — adlar birebir aynı, dosyalar farklı. Ayrım lib/aws/_credentials.py'de: resolve_auth_mode, resolve_api_key, resolve_region, resolve_workspace_id AWS yoluna özel; bedrock tarafında bunun karşılığı _client.py içindeki _prepare_options ve _infer_region."
+    },
+    {
+      "id": "z08",
+      "split": "test",
+      "question": "Model bir isteği reddettiğinde istek başka bir modele nasıl aktarılıyor ve akış hâlindeki cevap istemciye tek parça gibi nasıl gösteriliyor?",
+      "expect_files": [
+        "lib/middleware/_fallbacks.py",
+        "_middleware.py",
+        "_streaming.py"
+      ],
+      "note": "BetaRefusalFallbackMiddleware reddedilen /v1/messages isteklerini yedek zincirinde tekrar deniyor. BetaFallbackState bir istek dizisinin hangi yedeğe sabitlendiğini tutuyor ve middleware onu yerinde değiştiriyor (_fallbacks.py:68). Akış birleştirme _HopReader/_drive_hop ile yapılıyor; _seam_block sentetik 'fallback' bloğu model sınırını işaretliyor, _spliced_http_response birleşik cevabı üretiyor. Zincirin çalışma sözleşmesi _middleware.py'de, SSE çözümleme _streaming.py'de."
+    },
+    {
+      "id": "z09",
+      "split": "test",
+      "question": "Konuşma ortasında kullanılabilir araç listesi değiştiğinde bu değişiklik nasıl işleniyor ve bir araç çalışırken hata fırlatırsa ne gönderiliyor?",
+      "expect_files": [
+        "lib/tools/_tool_dispatch.py",
+        "lib/tools/_beta_runner.py"
+      ],
+      "note": "available_tool_names, konuşma ortasındaki tool_removal/tool_addition bloklarını katlayarak güncel listeyi çıkarıyor (_apply_tool_change, _apply_tool_reference_change, _referenced_tool_name). tool_error_content bir aracın fırlattığı istisnayı tool-result içeriğine çeviriyor. tool_registry O(1) arama için ada göre indeksliyor. Kullanan: _beta_runner.py:28,77,130."
+    },
+    {
+      "id": "z10",
+      "split": "test",
+      "question": "Akış olaylarının tam mesaja katlanması iki ayrı yerde yazılmış; hangi yüzey hangisini kullanıyor ve neden ikiye ayrılmışlar?",
+      "expect_files": [
+        "lib/streaming/_messages.py",
+        "lib/streaming/_beta_messages.py"
+      ],
+      "note": "TUZAK SORUSU: accumulate_event iki kez tanımlı — _messages.py:433 ve _beta_messages.py:449, ikisi de aynı adı taşıyor. MessageStream _messages.py:130,278'den; BetaMessageStream _beta_messages.py:133,282'den çağırıyor. Beta sürümü daha uzun (565 satır vs 520) çünkü beta yüzeyine özel blok tiplerini de biriktiriyor."
+    },
+    {
+      "id": "z11",
+      "split": "test",
+      "question": "Bedrock tarafında ayrı bir anahtar biçimiyle çalışan bir mod var; hangi ortam değişkenlerine bakıyor ve normal yoldan nerede ayrılıyor?",
+      "expect_files": [
+        "lib/bedrock/_mantle.py",
+        "lib/bedrock/_client.py"
+      ],
+      "note": "_mantle.py:38'de _MANTLE_API_KEY_ENV_VARS = ('AWS_BEARER_TOKEN_BEDROCK', 'ANTHROPIC_AWS_API_KEY'). _resolve_mantle_config (106-144) dört değer döndürüyor: çözülmüş api_key, base_url, use_sigv4 bayrağı ve birleştirilmiş başlıklar; base_url verilmediyse ANTHROPIC_BEDROCK_MANTLE_BASE_URL'e bakıyor. Ayrım noktası use_sigv4: normal bedrock yolu SigV4 imzalıyor, mantle bearer anahtar kullanabiliyor. Taban istemci _client.py'deki BaseBedrockClient."
+    },
+    {
+      "id": "z12",
+      "split": "test",
+      "question": "Kendi sunucusunda çalışan bir işçi iş kuyruğundan görev alırken, alamadığı ya da işleyemediği bir görev olursa ne yapıyor?",
+      "expect_files": [
+        "lib/environments/_poller.py",
+        "lib/environments/_worker.py"
+      ],
+      "note": "iter_work (_poller.py:53-95) işleri talep ediyor, reclaim_older_than_ms ile onaylanmamış işleri geri alıyor. İşlenemeyen bir öğe için _force_stop_quietly en iyi çabayla work.stop(force=True) çağırıyor (async karşılığı _aforce_stop_quietly). _worker.py bu döngüyü tam bir işçiye bağlıyor ve poll/worker istemcilerini _copy_client_with_bearer_auth ile kuruyor (311, 393)."
+    }
+  ]
+}

@@ -113,16 +113,21 @@ class Report:
         return sum(r.found for r in self.retrieval) / len(self.retrieval)
 
     @property
-    def symbol_recall(self) -> float:
+    def symbol_recall(self) -> float | None:
         """Sadece sembol beklentisi olan sorular üzerinden.
 
         Beklentisi olmayan sorular hesaba katılırsa metrik anlamsızlaşıyor:
         60 sorunun 50'sinde sembol beklentisi yok, hepsi bedava "bulundu"
         sayılırdı.
+
+        Hiç beklentisi olan soru yoksa **None** dönüyor, 0.0 değil: akış
+        setinde tek bir soruda bile sembol beklentisi yok ve rapor "%0" yazınca
+        "hepsini kaçırdı" gibi okunuyordu. Ölçülmemiş olmakla başarısız olmak
+        aynı şey değil.
         """
         scored = [r for r in self.retrieval if r.symbols_found is not None]
         if not scored:
-            return 0.0
+            return None
         return sum(bool(r.symbols_found) for r in scored) / len(scored)
 
     @property
@@ -168,7 +173,9 @@ class Report:
             "metrics": {
                 "recall": round(self.recall, 4),
                 "retrieval_coverage": round(self.retrieval_coverage, 4),
-                "symbol_recall": round(self.symbol_recall, 4),
+                "symbol_recall": (
+                    None if self.symbol_recall is None else round(self.symbol_recall, 4)
+                ),
                 "mrr": round(self.mrr, 4),
                 "answer_accuracy": round(self.answer_accuracy, 4),
                 "file_coverage": round(self.file_coverage, 4),
@@ -290,7 +297,12 @@ def format_report(report: Report, questions: list[Question]) -> str:
         lines.append("")
         lines.append(f"  recall@k     : {report.recall:.0%}")
         lines.append(f"  kapsam       : {report.retrieval_coverage:.0%}")
-        lines.append(f"  sembol recall: {report.symbol_recall:.0%}")
+        symbol_line = (
+            "ölçülmedi (sette sembol beklentisi yok)"
+            if report.symbol_recall is None
+            else f"{report.symbol_recall:.0%}"
+        )
+        lines.append(f"  sembol recall: {symbol_line}")
         lines.append(f"  MRR          : {report.mrr:.3f}")
         lines.append("")
 

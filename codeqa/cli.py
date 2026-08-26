@@ -16,7 +16,7 @@ from .docs import index_docs
 from .embeddings import CachedEmbedder, EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
 from .models import Chunk
-from .search import DIVERSITY_SLOTS, HybridSearch
+from .search import DIRECTORY_SLOTS, DIVERSITY_SLOTS, REFERENCE_SLOTS, HybridSearch
 
 DEFAULT_OUTPUT = Path("data/chunks.jsonl")
 
@@ -152,6 +152,9 @@ def _build_search(args: argparse.Namespace) -> HybridSearch:
         weights=weights,
         pool_size=getattr(args, "pool", 0) or None,
         diversity_slots=getattr(args, "diversity_slots", DIVERSITY_SLOTS),
+        directory_slots=getattr(args, "directory_slots", DIRECTORY_SLOTS),
+        reference_slots=getattr(args, "reference_slots", REFERENCE_SLOTS),
+        weigh_chunks=not getattr(args, "no_chunk_weight", False),
     )
 
 
@@ -293,6 +296,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "weights": {"bm25": args.bm25_weight, "vector": args.vector_weight},
             "pool": args.pool or None,
             "diversity_slots": args.diversity_slots,
+            "directory_slots": args.directory_slots,
+            "reference_slots": args.reference_slots,
+            "weigh_chunks": not args.no_chunk_weight,
             "k": args.k,
             "questions": len(questions),
             "split": args.split,
@@ -358,6 +364,20 @@ def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True)
     `search`, `ask` ve `eval` aynı arama katmanını kurduğu için aynı
     seçenekleri alıyorlar; tek yerde tanımlı olmaları ikisinin ayrışmasını
     engelliyor.
+
+    **Mod varsayılanı sağlayıcıya bağlı, kaza değil.** Buradaki varsayılan
+    `hybrid`, çünkü bu komutların varsayılan sağlayıcısı `hash` — anahtarsız
+    çalışan yer tutucu, anlamsal arama yapmıyor. Kendi repomuzda ölçüldü
+    (20 soru): hash + vector recall 0.65 / MRR 0.230, hash + hybrid 0.90 /
+    0.416. Yani zayıf embedding'de BM25 tarafı taşıyıcı.
+
+    Gerçek bir sağlayıcı verildiğinde tablo tersine dönüyor: voyage ile büyük
+    İngilizce repoda saf vektör hibriti açık ara geçiyor (akış kapsamı 0.750
+    vs 0.683, kolay 0.925 vs 0.825), küçük repoda ise berabere (MRR 0.650 vs
+    0.654). Bu yüzden `serve` varsayılanı `vector`: MCP her zaman gerçek bir
+    sağlayıcıyla kuruluyor.
+
+    Kısacası `--provider voyage` verirken `--mode vector` de vermek gerekiyor.
     """
     if with_mode:
         parser.add_argument(
@@ -394,6 +414,32 @@ def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True)
         type=int,
         default=0,
         help="Birleştirme/reranking öncesi aday havuzu (0 = otomatik)",
+    )
+    parser.add_argument(
+        "--no-chunk-weight",
+        action="store_true",
+        dest="no_chunk_weight",
+        help="Üretilmiş tip tanımlarını geri plana atmayı kapat (varsayılan: açık)",
+    )
+    parser.add_argument(
+        "--reference-slots",
+        type=int,
+        default=REFERENCE_SLOTS,
+        dest="reference_slots",
+        help=(
+            "İmport bağıyla eklenecek 'bu dosyayı kullanan dosya' sayısı "
+            f"(0 = kapalı, varsayılan {REFERENCE_SLOTS})"
+        ),
+    )
+    parser.add_argument(
+        "--directory-slots",
+        type=int,
+        default=DIRECTORY_SLOTS,
+        dest="directory_slots",
+        help=(
+            "Güçlü temsil edilen dizinlerden eklenecek kardeş dosya sayısı "
+            f"(0 = kapalı, varsayılan {DIRECTORY_SLOTS})"
+        ),
     )
     parser.add_argument(
         "--diversity-slots",
@@ -456,7 +502,12 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument(
         "--model-name", default=DEFAULT_MODEL, dest="model_name", help="Cevaplayan Claude modeli"
     )
-    ask_parser.add_argument("--context", type=int, default=8, help="Modele verilecek parça sayısı")
+    ask_parser.add_argument(
+        "--context",
+        type=int,
+        default=8,
+        help="Alaka sırasına göre verilecek parça sayısı (çeşitlilik slotları buna eklenir)",
+    )
     ask_parser.set_defaults(func=cmd_ask)
 
     eval_parser = subparsers.add_parser("eval", help="Soru seti üzerinde doğruluk ölç")
@@ -489,6 +540,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_index_arg(serve_parser, str(DEFAULT_OUTPUT))
     _add_embedding_args(serve_parser)
+    # Varsayılan burada `vector`, diğer komutlarda `hybrid`: MCP gerçek bir
+    # embedding sağlayıcısıyla kuruluyor ve ölçümde saf vektör hibriti geçiyor.
+    # Gerekçenin tamamı `_add_retrieval_args` docstring'inde.
     serve_parser.add_argument(
         "--mode",
         default="vector",

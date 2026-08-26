@@ -118,6 +118,40 @@ def _context(path: str, name: str, kind: str, module_doc: str | None) -> str:
     return header
 
 
+def _attribute_doc(body: list[ast.stmt], index: int) -> str | None:
+    """Bir atamanın hemen ardından gelen çıplak string: PEP 258 öznitelik docstring'i.
+
+    `ast` bunları atamaya bağlamıyor — gövdede ayrı bir `Expr` düğümü olarak
+    duruyorlar ve yalnızca `Import`/`Assign` düğümlerini toplayan bir okuyucudan
+    sessizce düşüyorlar. Bu SDK'da kaybın ölçüsü: 1097 dosyanın 624'ünde toplam
+    2025 docstring, 222.843 karakter. Üstelik tipli bir kütüphanede en açıklayıcı
+    metin bunlar — API alanlarının ne işe yaradığını anlatan satırlar.
+    """
+    if index + 1 >= len(body):
+        return None
+    following = body[index + 1]
+    if (
+        isinstance(following, ast.Expr)
+        and isinstance(following.value, ast.Constant)
+        and isinstance(following.value.value, str)
+    ):
+        return following.value.value
+    return None
+
+
+def _assignment_text(node: ast.stmt, doc: str | None, indent: str = "") -> str:
+    """Bir atamayı, varsa öznitelik docstring'iyle birlikte metne çevirir."""
+    text = ast.unparse(node)
+    if len(text) > MAX_ASSIGNMENT_CHARS:
+        # Büyük veri yapıları (uzun __all__ listeleri, gömülü tablolar)
+        # parçayı şişiriyor ve arama değeri taşımıyor.
+        text = text[:MAX_ASSIGNMENT_CHARS] + "  # ... (kısaltıldı)"
+    lines = [f"{indent}{text}"]
+    if doc:
+        lines.append(f'{indent}"""{doc.strip()}"""')
+    return "\n".join(lines)
+
+
 def _class_summary(node: ast.ClassDef, signature: str, docstring: str | None) -> str:
     """Sınıf parçasının metni: başlık + docstring + metot imzaları.
 
@@ -127,6 +161,18 @@ def _class_summary(node: ast.ClassDef, signature: str, docstring: str | None) ->
     parts = [signature]
     if docstring:
         parts.append(f'    """{docstring.strip()}"""')
+
+    # Alanlar ve onların öznitelik docstring'leri. Bunlar olmadan bir TypedDict
+    # parçası imza + docstring'ten ibaret kalıyordu; alanların ne anlama geldiğini
+    # anlatan metin parçaya hiç girmiyordu.
+    fields = []
+    for index, child in enumerate(node.body):
+        if isinstance(child, (ast.Assign, ast.AnnAssign)):
+            fields.append(_assignment_text(child, _attribute_doc(node.body, index), indent="    "))
+    if fields:
+        parts.append("    # alanlar:")
+        parts.extend(fields)
+
     methods = [f"    {_signature(n)}" for n in node.body if isinstance(n, _FUNC_TYPES)]
     if methods:
         parts.append("    # metotlar:")
@@ -163,7 +209,6 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
     #    Dosyanın ne iş yaptığını, neye bağlı olduğunu ve hangi varsayılan
     #    değerleri tanımladığını tek parçada toplar.
     imports = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
-    assignments = [n for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign))]
     included: list[ast.stmt] = []
     header_parts: list[str] = []
     if module_doc:
@@ -175,14 +220,14 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
     # Sabitler olmadan "varsayılan zaman aşımı kaç" gibi sorular cevapsız
     # kalıyor: DEFAULT_TIMEOUT = ... satırı hiçbir parçaya girmiyordu.
     constant_lines = []
-    for node in assignments:
-        text = ast.unparse(node)
-        if len(text) > MAX_ASSIGNMENT_CHARS:
-            # Büyük veri yapıları (uzun __all__ listeleri, gömülü tablolar)
-            # parçayı şişiriyor ve arama değeri taşımıyor.
-            text = text[:MAX_ASSIGNMENT_CHARS] + "  # ... (kısaltıldı)"
-        constant_lines.append(text)
+    for index, node in enumerate(tree.body):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        doc = _attribute_doc(tree.body, index)
+        constant_lines.append(_assignment_text(node, doc))
         included.append(node)
+        if doc:
+            included.append(tree.body[index + 1])
     header_parts.extend(constant_lines)
     if header_parts:
         module_name = rel_path.removesuffix(".py").replace("/", ".")

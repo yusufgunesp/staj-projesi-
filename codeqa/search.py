@@ -14,6 +14,8 @@ zorunda kalmıyor.
 
 from __future__ import annotations
 
+import collections
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -63,15 +65,68 @@ DIVERSITY_SLOTS = 4
 #: derinlikte yapıldı; daha sığ tarama zincirin uzak halkalarını kaçırıyor.
 DIVERSITY_SCAN = 60
 
+#: Dosya çeşitliliğinden sonra eklenen "aynı dizinden kardeş dosya" slotu sayısı.
+#:
+#: Gözlem şu: arama çoğu zaman doğru **dizini** buluyor ama o dizindeki doğru
+#: dosyayı kaçırıyor. Zor sette cevap kaybına yol açan iki soru da tam olarak
+#: buydu — `z05` beklenen `lib/credentials/_types.py` yerine aynı dizinden
+#: `_cache.py`'yi, `z06` beklenen `_chain.py` yerine yine aynı dizinden
+#: `_providers.py`, `_workload.py`, `_constants.py`'yi getirdi.
+#:
+#: Bir dizin sonuçlarda en az `DIRECTORY_TRIGGER` parçayla temsil ediliyorsa,
+#: o dizinin henüz görülmemiş dosyalarından en iyi parça ekleniyor. Eşik
+#: gerekli: tek bir isabetten dizin genişletmek gürültü getiriyor, iki isabet
+#: "cevap bu dizinde" sinyali sayılıyor.
+DIRECTORY_SLOTS = 2
+
+#: Dizin genişletmesinin tetiklenmesi için o dizinden gelmesi gereken parça sayısı.
+DIRECTORY_TRIGGER = 2
+
+#: İmport grafiğinden eklenen "bu dosyayı kullanan dosya" slotu sayısı.
+#:
+#: "Kimler kullanıyor" bir benzerlik sorusu değil, çağrı grafiği sorusu. Embedding
+#: araması bunu güvenilir biçimde çözemiyor: `lib/_scoped_client.py`'yi 1. sıraya
+#: koyduğu bir soruda, onu kullanan `lib/environments/_worker.py` 136. sıradaydı —
+#: tarama derinliğinin çok dışında. Sıralamayı derinleştirmek çözüm değil, çünkü
+#: aradaki 135 sonuç gürültü. Import bağını doğrudan takip etmek gerekiyor.
+REFERENCE_SLOTS = 2
+
+#: Bir dosyanın kullanıcıları bu sayıdan fazlaysa import bağı ayırt edici değil.
+#: Bu SDK'da `_models.py`'nin 513, `_types.py`'nin 100 kullanıcısı var — onları
+#: genişletmek her soruya aynı dosyaları eklemek demek. Buna karşılık dosyaların
+#: 862'sinin en fazla üç kullanıcısı var; asıl bilgi orada.
+REFERENCE_MAX_USERS = 5
+
+#: `from ..paket.modul import ad` biçimindeki göreli import satırları.
+_RELATIVE_IMPORT = re.compile(r"^from (\.+)([\w.]*) import", re.MULTILINE)
+
 #: Sadece alan tanımından ibaret sınıflara uygulanan ağırlık. Bunlar üretilmiş
 #: tip tanımları (TypedDict, model sınıfları) — sorunun kelimelerini içeriyorlar
 #: ama mantık taşımıyorlar.
 #:
-#: **Ölçüldü ve işe yaramadı.** anthropic SDK'sında (parçaların %42'si `types/`
-#: altında) 60 soruluk sette MRR 0.761 → 0.754, recall değişmedi. Kod duruyor
-#: çünkü fikir mantıklı ve başka bir repoda karşılığı olabilir, ama varsayılan
-#: **kapalı**: ölçülmüş faydası olmayan bir karmaşıklık açık gelmemeli.
-#: Açmak için `HybridSearch(..., weigh_chunks=True)`.
+#: **Tek başına işe yaramıyor, genişletme slotlarıyla birlikte yarıyor.**
+#:
+#: İlk ölçümde (60 soruluk set, genişletme yokken) MRR 0.761 → 0.754 ile geriledi
+#: ve kapatıldı. Kod "başka bir repoda karşılığı olabilir" diye bırakılmıştı;
+#: karşılığı başka repoda değil, başka yapılandırmada çıktı.
+#:
+#: Genişletme slotları eklendikten sonra 2×2 kontrol (yeni indeks, kapsam):
+#:
+#: =====================  =====  =====  ======
+#: yapılandırma           zor    akış   kolay
+#: =====================  =====  =====  ======
+#: taban                  0,639  0,842  0,917
+#: yalnız ağırlık         0,639  0,842  0,900
+#: yalnız genişletme      0,944  0,883  0,950
+#: ikisi birden           0,944  0,908  0,983
+#: =====================  =====  =====  ======
+#:
+#: Yani ağırlık tek başına hâlâ zarar veriyor (0,917 → 0,900), birlikte +3,3 puan
+#: katıyor. Mekanizma: ağırlık tip parçasını geri itiyor, boşalan slotu genişletme
+#: olmadan sıradaki (çoğu zaman yine bir tip) parça dolduruyor; genişletme varken
+#: o slot gerçekten farklı bir dosyaya gidiyor.
+#:
+#: Kapatmak için `HybridSearch(..., weigh_chunks=False)`.
 TYPE_ONLY_WEIGHT = 0.4
 
 
@@ -108,6 +163,108 @@ def extend_with_unseen_files(ranked: list, path_of, k: int, slots: int, scan: in
         seen.add(path)
         selected.append(item)
     return selected
+
+def extend_with_sibling_files(ranked: list, path_of, selected: list, slots: int, scan: int) -> list:
+    """Sonuçlarda güçlü temsil edilen dizinlerin görülmemiş dosyalarını ekler.
+
+    `extend_with_unseen_files` gibi hiçbir şeyi elemiyor, yalnızca ekliyor.
+    Farkı hangi birime baktığı: o dosyaya bakıyor, bu dizine. Arama doğru
+    dizini bulup yanlış dosyayı getirdiğinde devreye giren şey bu.
+    """
+    if slots <= 0:
+        return selected
+
+    def directory(path: str) -> str:
+        return path.rsplit("/", 1)[0] if "/" in path else ""
+
+    seen_paths = {path_of(item) for item in selected}
+    counts: collections.Counter = collections.Counter(directory(p) for p in seen_paths)
+    strong = {d for d, n in counts.items() if n >= DIRECTORY_TRIGGER}
+    if not strong:
+        return selected
+
+    added = 0
+    for item in ranked[:scan]:
+        if added >= slots:
+            break
+        path = path_of(item)
+        if path in seen_paths or directory(path) not in strong:
+            continue
+        seen_paths.add(path)
+        selected.append(item)
+        added += 1
+    return selected
+
+
+def _resolve_relative_import(importer: str, level: int, module: str | None) -> str:
+    """Göreli import'u dosya yoluna çevirir.
+
+    `lib/environments/_poller.py` içindeki `from .._retry import ...` →
+    `lib/_retry.py`. Nokta sayısı kaç paket yukarı çıkılacağını söylüyor.
+    """
+    parts = importer.split("/")[:-1]
+    if level > 1:
+        parts = parts[: -(level - 1)] if level - 1 <= len(parts) else []
+    if module:
+        parts = parts + module.split(".")
+    return "/".join(parts) + ".py"
+
+
+def build_import_graph(records: list[dict]) -> dict[str, set[str]]:
+    """Hangi dosyanın hangi dosyalar tarafından kullanıldığını çıkarır.
+
+    Kaynak, modül parçalarının metnindeki import satırları — indeksleme sırasında
+    zaten toplanıyorlar, ayrıca bir tarama gerekmiyor.
+    """
+    modules = {r["path"] for r in records if r["kind"] == "module"}
+    users: dict[str, set[str]] = {}
+    for record in records:
+        if record["kind"] != "module":
+            continue
+        importer = record["path"]
+        for level, module in _RELATIVE_IMPORT.findall(record["text"]):
+            target = _resolve_relative_import(importer, len(level), module or None)
+            if target in modules and target != importer:
+                users.setdefault(target, set()).add(importer)
+    return users
+
+
+def extend_with_referencing_files(
+    records: list[dict],
+    importers: dict[str, set[str]],
+    selected: list,
+    path_of,
+    slots: int,
+    max_users: int = REFERENCE_MAX_USERS,
+) -> list:
+    """Seçimdeki dosyaları kullanan dosyaların modül parçasını ekler.
+
+    Diğer iki genişletmeden farkı, sıralamaya hiç bakmaması: eklenen dosya aday
+    havuzunda olmayabilir, çoğu zaman değil de. Bu yüzden dosyanın modül parçası
+    ekleniyor — import'ları ve genel görünümü taşıyan parça.
+    """
+    if slots <= 0:
+        return selected
+
+    modules = {r["path"]: r for r in records if r["kind"] == "module"}
+    seen = {path_of(item) for item in selected}
+    added = 0
+    for item in list(selected):
+        if added >= slots:
+            break
+        users = importers.get(path_of(item), set())
+        # Çok kullanıcılı dosyalar (hub) ayırt edici değil: her soruya aynı
+        # dosyaları eklerler.
+        if not users or len(users) > max_users:
+            continue
+        for user in sorted(users):
+            if added >= slots or user in seen or user not in modules:
+                continue
+            seen.add(user)
+            selected.append(SearchHit(record=modules[user], score=0.0, sources=("reference",)))
+            added += 1
+    return selected
+
 
 @dataclass
 class SearchHit:
@@ -209,8 +366,10 @@ class HybridSearch:
         reranker=None,
         weights: dict[str, float] | None = None,
         pool_size: int | None = None,
-        weigh_chunks: bool = False,
+        weigh_chunks: bool = True,
         diversity_slots: int = DIVERSITY_SLOTS,
+        directory_slots: int = DIRECTORY_SLOTS,
+        reference_slots: int = REFERENCE_SLOTS,
     ):
         self.records = records
         self.bm25 = BM25Search(records)
@@ -220,6 +379,11 @@ class HybridSearch:
         self.pool_size = pool_size
         self.weigh_chunks = weigh_chunks
         self.diversity_slots = diversity_slots
+        self.directory_slots = directory_slots
+        self.reference_slots = reference_slots
+        # İmport grafiği ilk ihtiyaçta kuruluyor: kurulumu ucuz ama referans
+        # genişletmesi kapalıysa hiç gerekmiyor.
+        self._importers: dict[str, set[str]] | None = None
 
     def _candidates(self, query: str, pool: int, mode: str):
         if mode == "bm25":
@@ -259,41 +423,56 @@ class HybridSearch:
             pool = max(pool, DIVERSITY_SCAN)
         use_rerank = self.reranker is not None if rerank is None else rerank
         candidates = self._candidates(query, pool, mode)
+        if not candidates:
+            return []
 
-        if not use_rerank or self.reranker is None or not candidates:
-            selected = extend_with_unseen_files(
-                candidates,
-                lambda item: self.records[item[0]]["path"],
-                k,
-                self.diversity_slots,
-                DIVERSITY_SCAN,
-            )
-            return [
-                SearchHit(record=self.records[index], score=score, sources=sources)
-                for index, score, sources in selected
+        if use_rerank and self.reranker is not None:
+            # Reranker'a havuzun tamamı gidiyor, genişletmeler ondan sonra
+            # uygulanıyor: önce alaka sırası düzelsin, eklemeler düzelmiş sıranın
+            # arkasına gelsin. top_k=k verilseydi eklenecek aday kalmazdı.
+            documents = [
+                f"{self.records[index]['context']}\n\n{self.records[index]['text']}"
+                for index, _, _ in candidates
             ]
-
-        # Reranker'a parça metniyle birlikte konum etiketi de gidiyor: dosya yolu
-        # ve nitelenmiş ad, alaka değerlendirmesinde işe yarayan bilgiler.
-        documents = [
-            f"{self.records[index]['context']}\n\n{self.records[index]['text']}"
-            for index, _, _ in candidates
-        ]
-        sources_by_position = {position: item[2] for position, item in enumerate(candidates)}
-
-        # Reranker'a havuzun tamamı gidiyor, çeşitlilik ondan sonra ekleniyor:
-        # önce alaka sırası düzelsin, yeni dosyalar düzelmiş sıranın arkasına
-        # eklensin. top_k=k verilseydi eklenecek aday kalmazdı.
-        hits: list[SearchHit] = []
-        for position, score in self.reranker.rerank(query, documents, top_k=len(documents)):
-            record_index = candidates[position][0]
-            hits.append(
+            sources_by_position = {position: item[2] for position, item in enumerate(candidates)}
+            ranked = [
                 SearchHit(
-                    record=self.records[record_index],
+                    record=self.records[candidates[position][0]],
                     score=score,
                     sources=sources_by_position[position] + ("rerank",),
                 )
-            )
-        return extend_with_unseen_files(
-            hits, lambda hit: hit.record["path"], k, self.diversity_slots, DIVERSITY_SCAN
+                for position, score in self.reranker.rerank(query, documents, top_k=len(documents))
+            ]
+        else:
+            ranked = [
+                SearchHit(record=self.records[index], score=score, sources=sources)
+                for index, score, sources in candidates
+            ]
+
+        return self._expand(ranked, k)
+
+    def _expand(self, ranked: list[SearchHit], k: int) -> list[SearchHit]:
+        """Alaka sırasının arkasına üç ayrı eksende ekleme yapar.
+
+        Üçü de eleme yapmıyor, yalnızca ekliyor — sert kota denendiğinde ilk k
+        korunmadığı için sembol isabeti düşmüştü. Sıra da rastgele değil: önce
+        dosya (en genel), sonra dizin (daha dar), en sonra import bağı (en
+        seçici ve sıralamadan bağımsız).
+        """
+
+        def path_of(hit: SearchHit) -> str:
+            return hit.record["path"]
+
+        selected = extend_with_unseen_files(
+            ranked, path_of, k, self.diversity_slots, DIVERSITY_SCAN
         )
+        selected = extend_with_sibling_files(
+            ranked, path_of, selected, self.directory_slots, DIVERSITY_SCAN
+        )
+        if self.reference_slots > 0:
+            if self._importers is None:
+                self._importers = build_import_graph(self.records)
+            selected = extend_with_referencing_files(
+                self.records, self._importers, selected, path_of, self.reference_slots
+            )
+        return selected

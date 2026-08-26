@@ -321,3 +321,24 @@ def test_akis_question_set_is_valid():
     assert len(questions) == 20
     assert len(multi) >= 8, "akış seti çok dosyalı sorular içermeli"
     assert settings["index"] == "data/anthropic_ctx.jsonl"
+
+
+def test_symbol_recall_is_none_when_no_question_expects_symbols():
+    """Ölçülmemiş olmak başarısız olmak değil: %0 yerine None dönmeli."""
+    report = Report(label="t")
+    report.retrieval = [
+        RetrievalResult(question_id="a", found=True, rank=1, symbols_found=None, returned=[]),
+        RetrievalResult(question_id="b", found=True, rank=2, symbols_found=None, returned=[]),
+    ]
+    assert report.symbol_recall is None
+    assert report.to_dict()["metrics"]["symbol_recall"] is None
+
+
+def test_symbol_recall_counts_only_questions_with_expectations():
+    report = Report(label="t")
+    report.retrieval = [
+        RetrievalResult(question_id="a", found=True, rank=1, symbols_found=True, returned=[]),
+        RetrievalResult(question_id="b", found=True, rank=1, symbols_found=False, returned=[]),
+        RetrievalResult(question_id="c", found=True, rank=1, symbols_found=None, returned=[]),
+    ]
+    assert report.symbol_recall == 0.5  # beklentisiz soru paydaya girmiyor

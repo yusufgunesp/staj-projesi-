@@ -215,6 +215,26 @@ birini bulmak yetiyor. Asıl ölçüt **kapsam** ve orada %92'den %80'e düşüy
 Yani araç akış sorularında da doğru yere gidiyor ama zincirin tamamını getiremiyor: ortalama her
 beş dosyadan biri ilk 8'in dışında kalıyor. İyileştirme çalışmasının ölçüleceği yer burası.
 
+**Genişletmelerin cevap tarafındaki karşılığı (zor set, 12 soru):**
+
+Getirme metrikleri bu çalışmada tek başına yeterli değil: kapsam, eklenen slot sayısıyla
+matematiksel olarak düşemez, yani her ekleme kendini haklı çıkarır. Kararı cevap ölçümü verdi —
+iki kol da aynı modelle (`claude-haiku-4-5`) koşuldu, tek fark bağlam:
+
+| kol | getirme kapsamı | cevap doğruluğu | **cevap dosya kapsamı** | uydurma | parça |
+|-----|-----------------|-----------------|-------------------------|---------|-------|
+| genişletmeler kapalı | 0.639 | 75% | 46% | 0 | 8 |
+| **genişletmeler açık** | 0.944 | **100%** | **57%** | 0 | 15 |
+
+Getirmedeki +30 puan, cevapta +11 puana dönüşüyor — birebir değil, çünkü model eklenen bağlamın
+tamamını kullanmıyor. Asıl kazanç doğrulukta: `z01`, `z07` ve `z10` tabanda hiçbir doğru dosyaya
+referans veremezken genişletmeliyle veriyor.
+
+Model seçimi hakkında bir not: aynı ölçüm `claude-opus-5` ile %82 dosya kapsamı vermişti, yani
+Haiku'nun %57'si mutlak olarak daha düşük. Ama ölçüm aleti olarak Haiku daha iyi çıktı — Opus
+tavana yakın çalıştığı için kolları ayırt edemiyordu. Bir de maliyet farkı var: iki Haiku koşusu
+$0.55, tek Opus koşusu $10.75.
+
 **Çeşitlilik slotları (test bölmesi, hiç ayar yapılmamış veri):**
 
 Teşhis: ilk 8 sonuçta ortalama yalnızca **3,1 farklı dosya** vardı. 160 slotun 98'i zaten listede
@@ -270,6 +290,13 @@ Küçük repoda (Türkçe yorumlu, 249 parça) hibrit en iyisiydi. Büyük repod
 Sebep dil: Türkçe sorgu kelimeleri İngilizce kodda geçmiyor, BM25'in tutunacağı yer kalmıyor.
 RRF zayıf sıralayıcıyı da hesaba kattığı için hibrit, saf vektörü aşağı çekiyor. Sorguyu
 İngilizceye çevirmek BM25'i kısmen kurtarıyor (%15 → %57) ama hibrit yine saf vektörü geçemiyor.
+
+**Varsayılan mod sağlayıcıya bağlı.** `search`/`ask`/`eval` varsayılanı `hybrid`, `serve`
+varsayılanı `vector` — bu kaza değil. İlk grubun varsayılan sağlayıcısı `hash`, yani anahtarsız
+çalışan yer tutucu; onunla vektör araması zayıf kalıyor ve BM25 tarafı taşıyor (kendi repo,
+20 soru: hash+vector recall %65 / MRR 0.230, hash+hybrid %90 / 0.416). `serve` ise her zaman
+gerçek bir sağlayıcıyla kuruluyor ve orada saf vektör kazanıyor. Pratik sonuç: `--provider
+voyage` verirken `--mode vector` de vermek gerekiyor.
 
 **Çıkarım:** arama modu sabitlenmemeli, her müşteri kod tabanında ölçülüp seçilmeli.
 
@@ -354,11 +381,21 @@ data/, runs/     üretilen çıktılar (git'e girmez)
 
 ## Sıradaki adımlar
 
-1. **Akış sorularında kapsamı yükseltmek** — %80'de; zincirin tamamını getirmek için
-   HyDE (soruya cevap olabilecek sahte kod üretip onu embed etmek) denenmeli.
+1. **Cevap tarafını yeniden ölçmek** (ücretli) — iki sebeple: modele artık 8 değil 12 parça
+   gidiyor ve bunun cevaba etkisi ölçülmedi; ayrıca akış sorularında uçtan uca cevap hiç
+   ölçülmedi. Slot sayısının 4 mü 8 mi olacağı da ancak burada karara bağlanabilir — getirme
+   kapsamı slot sayısıyla monoton arttığı için nerede durulacağını söyleyemiyor.
 2. **Çok dilli ölçüm** — diller kod tarafında destekleniyor ama doğruluk yalnızca Python
-   üzerinde ölçüldü. Java ya da C++ bir repoda soru seti hazırlanıp tekrarlanmalı.
+   üzerinde ölçüldü. Java ya da C++ bir repoda soru seti hazırlanıp tekrarlanmalı. Önce
+   müşteri projelerinin ağırlıklı dili öğrenilmeli, yoksa körlemesine olur.
 3. **Demo** — müdüre gösterilecek akış.
-4. **Cevap tarafını zor sette ölçmek** — getirme ölçüldü, cevap ölçümü (ücretli) bekliyor.
-5. **`types/` gürültüsü** — 4 soruda gerçek cevap hâlâ üretilmiş tip tanımlarının altında
-   kalıyor; ağırlık düşürmek yetmedi, başka bir yaklaşım gerekiyor.
+4. **`d36` etiketi gözden geçirilmeli** — "zamanlanmış çalıştırmalar hangi kaynak üzerinden
+   yönetiliyor" sorusunun etiketi `resources/beta/deployments.py`, ama arama
+   `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Etiket
+   düzeltilirse **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
+
+**Kapanan madde:** `types/` gürültüsü. 60 soruluk sette bulunamayan 4 soru vardı (`d35`,
+`d36`, `t19`, `t20`); çeşitlilik slotları üçünü çözdü, geriye yalnızca yukarıdaki etiket
+şüphesi kaldı. İlginç olan, `types/` parçalarının payının **artmış** olması (%15 → %21):
+sorun tip tanımlarının varlığı değil, gerçek cevaba yer kalmamasıymış. Ağırlık düşürerek
+çözülmeye çalışılması bu yüzden işe yaramamış.

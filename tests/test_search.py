@@ -18,9 +18,15 @@ from codeqa.embeddings import (
 )
 from codeqa.indexer import extract_from_source
 from codeqa.search import (
+    TYPE_ONLY_WEIGHT,
     BM25Search,
     HybridSearch,
+    SearchHit,
     VectorSearch,
+    build_import_graph,
+    chunk_weight,
+    extend_with_referencing_files,
+    extend_with_sibling_files,
     extend_with_unseen_files,
     reciprocal_rank_fusion,
 )
@@ -489,3 +495,134 @@ def test_diversity_slots_never_shrink_result(multi_file_records, embedder):
         assert len(diverse.search("ödeme", k=3, mode=mode)) >= len(
             plain.search("ödeme", k=3, mode=mode)
         )
+
+
+# --- dizin kardeşi slotları --------------------------------------------------
+
+
+def test_sibling_expansion_needs_two_hits_in_the_directory():
+    """Tek isabetten dizin genişletmek gürültü; eşik iki."""
+    ranked = [("a/x.py", 1), ("b/p.py", 2), ("a/y.py", 3)]
+    selected = [("a/x.py", 1)]  # a/ dizininden yalnızca bir parça
+    out = extend_with_sibling_files(ranked, lambda i: i[0], list(selected), slots=2, scan=10)
+    assert out == selected  # eşik dolmadı, hiçbir şey eklenmedi
+
+
+def test_sibling_expansion_adds_unseen_file_from_strong_directory():
+    ranked = [("a/x.py", 1), ("a/y.py", 2), ("b/p.py", 3), ("a/z.py", 4)]
+    selected = [("a/x.py", 1), ("a/y.py", 2)]  # a/ iki parçayla temsil ediliyor
+    out = extend_with_sibling_files(ranked, lambda i: i[0], list(selected), slots=1, scan=10)
+    assert out[:2] == selected  # mevcut seçim korunuyor
+    assert out[2] == ("a/z.py", 4)  # a/ dizininden görülmemiş dosya eklendi
+
+
+def test_sibling_expansion_respects_slot_budget():
+    ranked = [("a/x.py", 1), ("a/y.py", 2), ("a/z.py", 3), ("a/w.py", 4)]
+    selected = [("a/x.py", 1), ("a/y.py", 2)]
+    out = extend_with_sibling_files(ranked, lambda i: i[0], list(selected), slots=1, scan=10)
+    assert len(out) == 3
+
+
+def test_sibling_expansion_disabled_returns_selection_untouched():
+    ranked = [("a/x.py", 1), ("a/y.py", 2), ("a/z.py", 3)]
+    selected = [("a/x.py", 1), ("a/y.py", 2)]
+    out = extend_with_sibling_files(ranked, lambda i: i[0], list(selected), slots=0, scan=10)
+    assert out == selected
+
+
+def test_directory_slots_never_shrink_result(multi_file_records, embedder):
+    vectors, _ = embed_records(multi_file_records, embedder, None)
+    plain = HybridSearch(
+        multi_file_records, vectors, embedder, diversity_slots=0, directory_slots=0
+    )
+    both = HybridSearch(multi_file_records, vectors, embedder, diversity_slots=2, directory_slots=2)
+    for mode in ("hybrid", "vector", "bm25"):
+        assert len(both.search("ödeme", k=3, mode=mode)) >= len(
+            plain.search("ödeme", k=3, mode=mode)
+        )
+
+
+# --- import bağı (referans) slotları ----------------------------------------
+
+
+def _module_record(path: str, text: str) -> dict:
+    return {
+        "path": path,
+        "kind": "module",
+        "name": path,
+        "text": text,
+        "context": "",
+        "location": f"{path}:1",
+    }
+
+
+def test_import_graph_resolves_relative_imports():
+    """`lib/environments/_poller.py` içindeki `from .._retry import` → `lib/_retry.py`."""
+    records = [
+        _module_record("lib/_retry.py", "TRANSIENT = ()"),
+        _module_record("lib/environments/_poller.py", "from .._retry import backoff"),
+        _module_record("lib/tools/_runner.py", "from .._retry import backoff"),
+    ]
+    graph = build_import_graph(records)
+    assert graph["lib/_retry.py"] == {"lib/environments/_poller.py", "lib/tools/_runner.py"}
+
+
+def test_import_graph_ignores_targets_outside_the_index():
+    records = [_module_record("lib/x.py", "from ..nonexistent import thing")]
+    assert build_import_graph(records) == {}
+
+
+def test_reference_expansion_adds_users_of_a_selected_file():
+    """'Kimler kullanıyor' sorusu sıralamayla değil, import bağıyla çözülüyor."""
+    records = [
+        _module_record("lib/_scoped.py", "def helper(): ..."),
+        _module_record("lib/_worker.py", "from ._scoped import helper"),
+    ]
+    graph = build_import_graph(records)
+    selected = [SearchHit(record=records[0], score=1.0, sources=("vector",))]
+    out = extend_with_referencing_files(
+        records, graph, list(selected), lambda h: h.record["path"], slots=2
+    )
+    assert [h.record["path"] for h in out] == ["lib/_scoped.py", "lib/_worker.py"]
+    assert out[1].sources == ("reference",)
+
+
+def test_reference_expansion_skips_widely_imported_hubs():
+    """513 kullanıcısı olan bir dosyayı genişletmek her soruya aynı dosyaları eklemek olur."""
+    records = [_module_record("_models.py", "class Base: ...")]
+    records += [_module_record(f"m{i}.py", "from ._models import Base") for i in range(8)]
+    graph = build_import_graph(records)
+    selected = [SearchHit(record=records[0], score=1.0, sources=("vector",))]
+    out = extend_with_referencing_files(
+        records, graph, list(selected), lambda h: h.record["path"], slots=4, max_users=5
+    )
+    assert len(out) == 1  # eşik aşıldı, hiçbir şey eklenmedi
+
+
+def test_reference_expansion_disabled_returns_selection_untouched():
+    records = [
+        _module_record("a.py", "x = 1"),
+        _module_record("b.py", "from .a import x"),
+    ]
+    selected = [SearchHit(record=records[0], score=1.0, sources=("vector",))]
+    out = extend_with_referencing_files(
+        records, build_import_graph(records), list(selected), lambda h: h.record["path"], slots=0
+    )
+    assert out == selected
+
+
+def test_chunk_weighting_is_on_by_default():
+    """Tek başına zarar veriyordu, genişletme slotlarıyla birlikte kazandırıyor."""
+    records = [_module_record("a.py", "x = 1")]
+    searcher = HybridSearch(records, np.zeros((1, 4), dtype=np.float32), HashEmbedder(4))
+    assert searcher.weigh_chunks is True
+
+
+def test_type_only_class_is_demoted_but_class_with_methods_is_not():
+    field_only = {"kind": "class", "text": "class Vault(TypedDict):\n    # alanlar:\n    id: str"}
+    with_methods = {
+        "kind": "class",
+        "text": "class Vaults(SyncAPIResource):\n    def create(self): ...",
+    }
+    assert chunk_weight(field_only) == TYPE_ONLY_WEIGHT
+    assert chunk_weight(with_methods) == 1.0

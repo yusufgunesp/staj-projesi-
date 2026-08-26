@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import pytest
 
-from codeqa.answer import MAX_READ_LINES, Answer, CodebaseAnswerer, extract_citations
+from codeqa.answer import (
+    MAX_READ_LINES,
+    Answer,
+    CodebaseAnswerer,
+    extract_citations,
+    supports_adaptive_thinking,
+)
 from codeqa.embeddings import HashEmbedder, embed_records
 from codeqa.indexer import extract_from_source
 from codeqa.search import HybridSearch
@@ -208,3 +214,10 @@ def test_answer_cited_files_are_unique_and_sorted():
 def test_answer_defaults_are_empty():
     answer = Answer(question="s", text="cevap")
     assert answer.hits == [] and answer.tool_calls == [] and answer.usage == {}
+
+
+def test_adaptive_thinking_only_for_models_that_support_it():
+    """Haiku'ya `thinking` gönderilince istek 400 ile reddediliyor."""
+    assert supports_adaptive_thinking("claude-opus-5")
+    assert supports_adaptive_thinking("claude-sonnet-5")
+    assert not supports_adaptive_thinking("claude-haiku-4-5-20251001")

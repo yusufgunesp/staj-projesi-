@@ -218,3 +218,59 @@ def test_relative_paths_are_repo_relative(tmp_path):
     chunks, _ = index_repo(tmp_path)
 
     assert all(c.path == "pkg/mod.py" for c in chunks)
+
+
+# --- öznitelik docstring'leri (PEP 258) -------------------------------------
+
+ATTRIBUTE_DOCS_SOURCE = '''
+"""Ara katman tipleri."""
+
+from typing import Callable
+
+CallNext = Callable[[int], str]
+"""Zincirin geri kalanını çağırır ve tek bir HTTP denemesi yapar."""
+
+TIMEOUT = 30
+"""Saniye cinsinden varsayılan zaman aşımı."""
+
+
+class Options(TypedDict):
+    """İstek seçenekleri."""
+
+    model: str
+    """Kullanılacak modelin adı."""
+
+    stream: bool
+    """Cevabın parça parça mı döneceği."""
+'''
+
+
+def test_module_chunk_keeps_attribute_docstrings():
+    """Atamadan sonra gelen çıplak string, ast tarafından atamaya bağlanmıyor.
+
+    Yalnızca Import/Assign toplayan bir okuyucudan sessizce düşüyorlar — oysa
+    tipli bir kütüphanede en açıklayıcı metin bunlar.
+    """
+    chunks = extract_from_source(ATTRIBUTE_DOCS_SOURCE, "lib/middleware.py")
+    module = next(c for c in chunks if c.kind == "module")
+    assert "Zincirin geri kalanını çağırır" in module.text
+    assert "Saniye cinsinden varsayılan zaman aşımı" in module.text
+
+
+def test_class_chunk_keeps_fields_and_their_docstrings():
+    """Alan listesi olmadan bir TypedDict parçası imza + docstring'ten ibaret kalıyordu."""
+    chunks = extract_from_source(ATTRIBUTE_DOCS_SOURCE, "lib/middleware.py")
+    options = next(c for c in chunks if c.name == "Options")
+    assert "model: str" in options.text
+    assert "Kullanılacak modelin adı" in options.text
+    assert "Cevabın parça parça mı döneceği" in options.text
+
+
+def test_attribute_docstring_does_not_become_its_own_chunk():
+    """Docstring atamanın metnine giriyor, ayrı bir parça üretmiyor."""
+    chunks = extract_from_source(ATTRIBUTE_DOCS_SOURCE, "lib/middleware.py")
+    assert not any(c.name.startswith('"""') for c in chunks)
+    module = next(c for c in chunks if c.kind == "module")
+    # Satır aralığı docstring'i de kapsıyor: TIMEOUT ataması 9. satırda, onun
+    # docstring'i 10'da ve parça 10'da bitiyor.
+    assert module.end_line == 10
