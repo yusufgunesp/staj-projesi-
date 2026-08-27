@@ -651,3 +651,45 @@ def test_reexport_demotion_is_off_by_default():
 
 def test_forward_reference_expansion_is_off_by_default():
     assert REFERENCE_FORWARD_SLOTS == 0
+
+
+def test_cache_save_reads_each_disk_array_once(tmp_path, embedder, monkeypatch):
+    """`np.load` bir `.npz` üzerinde tembel: her `data["vectors"]` erişimi diziyi
+    arşivden baştan açıyor. Birleştirme döngüsünün içinde kullanılırsa maliyet
+    anahtar sayısıyla çarpılıyor — 12 bin vektörlük gerçek önbellekte tek
+    kaydetme 60 saniye sürüyordu, düzeltmeden sonra ölçülemeyecek kadar kısa.
+    """
+    import numpy as np
+
+    first = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+    for i in range(25):
+        first.put(f"hash{i}", np.ones(4, dtype=np.float32) * i)
+    first.save()
+
+    sayac = {"vectors": 0, "keys": 0}
+    gercek_load = np.load
+
+    class SayanArsiv:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getitem__(self, name):
+            if name in sayac:
+                sayac[name] += 1
+            return self._inner[name]
+
+        def __enter__(self):
+            self._inner.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._inner.__exit__(*args)
+
+    monkeypatch.setattr(np, "load", lambda *a, **k: SayanArsiv(gercek_load(*a, **k)))
+
+    second = EmbeddingCache(embedder.name, cache_dir=tmp_path)
+    second.put("yeni", np.zeros(4, dtype=np.float32))
+    second.save()
+
+    # 25 anahtar var; dizi anahtar başına değil, kaydetme başına okunmalı.
+    assert sayac["vectors"] <= 2, f"vektör dizisi {sayac['vectors']} kez açıldı"

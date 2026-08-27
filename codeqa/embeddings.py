@@ -369,8 +369,15 @@ class EmbeddingCache:
         if self.path.exists():
             try:
                 with np.load(self.path, allow_pickle=False) as data:
-                    for index, key in enumerate(data["keys"]):
-                        merged.setdefault(str(key), data["vectors"][index])
+                    # Diziler döngüden ÖNCE okunuyor. `np.load` bir `.npz`
+                    # üzerinde tembel çalışıyor: `data["vectors"]` her erişimde
+                    # diziyi arşivden baştan açıyor. Döngü içinde kullanılırsa
+                    # 48 MB'lık dizi anahtar sayısı kadar okunuyor — 12 bin
+                    # vektörde tek kaydetme 60 saniye sürüyordu.
+                    disk_keys = data["keys"]
+                    disk_vectors = data["vectors"]
+                for index, key in enumerate(disk_keys):
+                    merged.setdefault(str(key), disk_vectors[index])
             except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile):
                 # Yarım yazılmış ya da bozuk önbellek dosyası koşuyu durdurmasın.
                 # Başka bir sürecin yazması sırasında okumaya denk gelmek

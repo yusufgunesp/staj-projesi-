@@ -476,6 +476,32 @@ açıldığı oldu.
 **Asıl ders bölmenin kendisinde:** üç denemeden üçü dev'de kazandı, üçü de test'te kaybetti.
 Bölme olmasaydı üçü de rapora "iyileştirme" diye girecekti.
 
+### Aynı hata iki kez, iki farklı kılıkta
+
+Önbellek katmanında art arda iki performans hatası çıktı ve ikisi de aynı kök sebebe dayanıyordu:
+**maliyeti sabit sanılan bir işlemin döngü içinde tekrarlanması.**
+
+Birincisi ölçüm koşusunda yakalandı: eşzamanlılık için eklenen birleştirmeli kaydetme her sorguda
+48 MB'lık önbelleği baştan okuyup yazıyordu. Toplu yazmaya çevrildi (25 sorguda bir + süreç
+sonunda), koşu 10 dakikadan 45 saniyeye indi.
+
+İkincisi demo hazırlığında yakalandı ve daha sinsiydi. `codeqa ask` her çağrıda 68 saniye
+sürüyordu; profil arama katmanının yalnızca 0,5 saniye harcadığını gösterdi. Geri kalanı tek bir
+satırdaydı:
+
+```python
+for index, key in enumerate(data["keys"]):
+    merged.setdefault(str(key), data["vectors"][index])   # ← döngü içinde
+```
+
+`np.load` bir `.npz` üzerinde tembel çalışıyor: `data["vectors"]` her erişimde 48 MB'lık diziyi
+arşivden baştan açıyor. 12.205 anahtar için dizi 12.205 kez okunuyordu. Diziyi döngüden önce bir
+kez okumak yetti — **tek kaydetme 60,8 saniyeden ölçülemeyecek kadar kısaya**, `ask` komutu 68
+saniyeden 6,3 saniyeye indi.
+
+İkisi de teste bağlandı. İkincisinin testi zamanlama ölçmüyor (kırılgan olurdu); dizinin arşivden
+kaç kez açıldığını sayıyor.
+
 ### Getirmeyi düzeltmek her zaman cevabı düzeltmiyor
 
 Zor sette getirme kapsamı %94, cevap dosya kapsamı %57'ydi. Aradaki 37 puan tamamen cevaplama
@@ -503,24 +529,33 @@ codeqa/
   evaluation.py  soru seti, getirme ve cevap metrikleri
   mcp_server.py  MCP sunucusu (search_code, read_chunk, index_status)
   cli.py         komut satırı arayüzü
+DEMO.md          müdüre gösterilecek akış, komutlar ve fallback yolları
 eval/
   questions.json            kendi repo, 20 soru
   questions_anthropic.json  SDK, 60 soru (tek konum)
   questions_akis.json       SDK, 20 soru (akış, 2-4 dosya)
-  questions_zor.json        SDK, 12 soru (zor, 3-5 dosya + benzer varyantlar)
-tests/           208 birim testi — ağ ve API anahtarı gerektirmiyor
+  questions_zor.json        SDK, 26 soru (12 dev / 14 test)
+tests/           209 birim testi — ağ ve API anahtarı gerektirmiyor
 data/, runs/     üretilen çıktılar (git'e girmez)
 ```
 
 ## Sıradaki adımlar
 
-1. **Prompt düzeltmesini görmediği bir sette sınamak** — eksiksizlik kuralları zor setin
+1. **Dizin genişletmesini temsil gücüne göre sıralamak** (denenmemiş aday). Teşhis test
+   bölmesindeki `z24`'te yapıldı: ilk 8 sonucun tamamı tek dosyadan (`lib/tools/mcp.py`)
+   geliyor, aranan `lib/tools/_tool_dispatch.py` 45. sırada. `lib/tools/` dizini ilk 14
+   sonucun 10'unu kaplıyor ama dizin slotları `types/beta/`'ya gitti — çünkü genişletme
+   sıralamada **önce rastladığı** dizini seçiyor, en güçlü temsil edileni değil.
+   Denenirse `z24` test'ten dev'e taşınmalı ve rapor edilen sayı kalan 13 sorudan alınmalı.
+
+2. **Prompt düzeltmesini görmediği bir sette sınamak** — eksiksizlik kuralları zor setin
    hatalarına bakılarak yazıldı, yani o sete ayar yapıldı. Akış setinde eski/yeni prompt yan yana
    koşulmalı (~$0.90). Sonuç genelleniyorsa %72 gerçek; genellemiyorsa raporda öyle yazılmalı.
-2. **Çok dilli ölçüm** — sekiz dil destekleniyor, doğruluk yalnızca Python'da ölçüldü. Java ya da
+3. **Çok dilli ölçüm** — sekiz dil destekleniyor, doğruluk yalnızca Python'da ölçüldü. Java ya da
    C++ bir repoda soru seti gerekiyor. Önce müşteri projelerinin ağırlıklı dili öğrenilmeli.
-3. **Demo** — müdüre gösterilecek akış.
-4. **`d36` etiketi gözden geçirilmeli** — "zamanlanmış çalıştırmalar hangi kaynak üzerinden
+4. **Demo** — akış hazır: [DEMO.md](DEMO.md). Komutların hepsi çalıştırılarak doğrulandı,
+   fallback yolları dahil.
+5. **`d36` etiketi gözden geçirilmeli** — "zamanlanmış çalıştırmalar hangi kaynak üzerinden
    yönetiliyor" sorusunun etiketi `resources/beta/deployments.py`, ama arama
    `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Etiket
    düzeltilirse **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
