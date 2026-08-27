@@ -308,82 +308,95 @@ def build_import_graph(records: list[dict]) -> ImportGraph:
     return ImportGraph(users=users, imports=imports)
 
 
+def _inject_module(records_by_path: dict, selected: list, seen: set, path: str) -> None:
+    """Bir dosyanın modül parçasını sonuca ekler.
+
+    Sıralamadan gelmediği için skoru yok; kaynağı `reference` olarak
+    işaretleniyor ki çıktıda hangi parçanın import bağıyla geldiği görünsün.
+    """
+    seen.add(path)
+    selected.append(SearchHit(record=records_by_path[path], score=0.0, sources=("reference",)))
+
+
+def _module_records(records: list[dict]) -> dict[str, dict]:
+    return {r["path"]: r for r in records if r["kind"] == "module"}
+
+
 def extend_with_referencing_files(
     records: list[dict],
     graph: ImportGraph,
     selected: list,
     path_of,
     slots: int,
-    forward_slots: int = REFERENCE_FORWARD_SLOTS,
     max_users: int = REFERENCE_MAX_USERS,
-    rank_key=None,
 ) -> list:
-    """İmport bağıyla bağlı dosyaların modül parçasını ekler, iki yönde.
+    """Geri yön: seçimdeki dosyaları **kullanan** dosyaların modül parçasını ekler.
 
-    Diğer iki genişletmeden farkı, sıralamaya hiç bakmaması: eklenen dosya aday
-    havuzunda olmayabilir, çoğu zaman değil de. Bu yüzden dosyanın modül parçası
-    ekleniyor — import'ları ve genel görünümü taşıyan parça.
+    Diğer genişletmelerden farkı, sıralamaya hiç bakmaması: eklenen dosya aday
+    havuzunda olmayabilir, çoğu zaman değil de. Bir ölçümde beklenen dosya
+    sıralamada 136. sıradaydı; taramayı o derinliğe açmak araya 135 gürültü
+    almak demekti.
 
-    Önce geri yön ("kimler kullanıyor"), sonra ileri yön ("neyi kullanıyor").
-    İki yön farklı işliyor, çünkü simetrik değiller:
-
-    - **Geri yön** kendi başına seçici. Az kullanıcılı bir dosyayı çağıran yerler
-      o dosyanın varlık sebebini anlatıyor; hepsi eklenebilir.
-    - **İleri yön** gürültülü: sıradan bir modül on küsur şey import eder ve
-      çoğu (`_models.py`, `_base_client.py`) her dosyada geçer. Burada üç eleme
-      var — değer taşımayan yeniden dışa aktarım kabukları atlanıyor, çok
-      kullanıcılı hub'lar atlanıyor, kalanlar sorguya yakınlığa göre sıralanıyor.
-      İmport bağı adayları 4311'den bir avuca indiriyor, benzerlik o avucun
-      içinde seçiyor.
+    Bu yön kendi başına seçici: az kullanıcılı bir dosyayı çağıran yerler o
+    dosyanın varlık sebebini anlatıyor. Çok kullanıcılı dosyalar (hub) atlanıyor.
     """
-    if slots <= 0 and forward_slots <= 0:
+    if slots <= 0:
         return selected
 
-    modules = {r["path"]: r for r in records if r["kind"] == "module"}
+    modules = _module_records(records)
     seen = {path_of(item) for item in selected}
-    budget = [slots]
-
-    def add(path: str) -> None:
-        seen.add(path)
-        selected.append(SearchHit(record=modules[path], score=0.0, sources=("reference",)))
-        budget[0] -= 1
-
-    def usable(path: str) -> bool:
-        return path not in seen and path in modules
-
-    # Geri yön: kimler kullanıyor.
+    kalan = slots
     for item in list(selected):
-        if budget[0] <= 0:
+        if kalan <= 0:
             break
         users = graph.users.get(path_of(item), set())
         if not users or len(users) > max_users:
             continue
         for path in sorted(users):
-            if budget[0] <= 0:
+            if kalan <= 0:
                 break
-            if usable(path):
-                add(path)
+            if path not in seen and path in modules:
+                _inject_module(modules, selected, seen, path)
+                kalan -= 1
+    return selected
 
-    if forward_slots <= 0 or rank_key is None:
+
+def extend_with_imported_files(
+    records: list[dict],
+    graph: ImportGraph,
+    selected: list,
+    path_of,
+    slots: int,
+    rank_key,
+    hub_users: int = REFERENCE_HUB_USERS,
+) -> list:
+    """İleri yön: seçimdeki dosyaların **kullandığı** dosyaların modül parçasını ekler.
+
+    Geri yönden daha gürültülü, çünkü sıradan bir modül on küsur şey import
+    ediyor ve çoğu (`_models.py`, `_base_client.py`) her dosyada geçiyor. Üç
+    eleme var: değer taşımayan yeniden dışa aktarım kabukları atlanıyor, çok
+    kullanıcılı hub'lar atlanıyor, kalanlar sorguya yakınlığa göre sıralanıyor.
+    İmport bağı adayları binlerden bir avuca indiriyor, benzerlik o avucun
+    içinde seçiyor.
+
+    **Ölçüldü ve genellenmedi**, gerekçesi `REFERENCE_FORWARD_SLOTS` üzerinde.
+    """
+    if slots <= 0 or rank_key is None:
         return selected
-    budget[0] = forward_slots
 
-    # İleri yön: neyi kullanıyor.
-    candidates: set[str] = set()
-    for item in list(selected):
-        for path in graph.imports.get(path_of(item), set()):
-            if not usable(path):
-                continue
-            if len(graph.users.get(path, ())) > REFERENCE_HUB_USERS:
-                continue
-            if is_reexport_module(modules[path]["text"]):
-                continue
-            candidates.add(path)
-    for path in sorted(candidates, key=lambda p: -rank_key(modules[p])):
-        if budget[0] <= 0:
-            break
-        if usable(path):
-            add(path)
+    modules = _module_records(records)
+    seen = {path_of(item) for item in selected}
+    candidates = {
+        path
+        for item in list(selected)
+        for path in graph.imports.get(path_of(item), set())
+        if path in modules
+        and path not in seen
+        and len(graph.users.get(path, ())) <= hub_users
+        and not is_reexport_module(modules[path]["text"])
+    }
+    for path in sorted(candidates, key=lambda p: -rank_key(modules[p]))[:slots]:
+        _inject_module(modules, selected, seen, path)
     return selected
 
 
@@ -614,12 +627,14 @@ class HybridSearch:
             if self._import_graph is None:
                 self._import_graph = build_import_graph(self.records)
             selected = extend_with_referencing_files(
+                self.records, self._import_graph, selected, path_of, self.reference_slots
+            )
+            selected = extend_with_imported_files(
                 self.records,
                 self._import_graph,
                 selected,
                 path_of,
-                self.reference_slots,
-                forward_slots=self.reference_forward_slots,
-                rank_key=self._rank_key(query),
+                self.reference_forward_slots,
+                self._rank_key(query) if self.reference_forward_slots > 0 else None,
             )
         return selected

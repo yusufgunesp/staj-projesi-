@@ -12,10 +12,11 @@ _should_retry'da veriliyor: 408, 409, 429 ve 5xx yeniden deneniyor.
 Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 ```
 
-**Ölçülen sonuç:** 1097 dosyalık bir üçüncü taraf repoda üç ayrı soru seti üzerinde. Tek konumlu
-sorularda cevap doğruluğu %100; akış sorularında %95 doğruluk / %84 dosya kapsamı; cevabı 3-5
-dosyaya yayılan zor sette %100 doğruluk / %57 dosya kapsamı. Uydurma referans hiçbir koşuda
-görülmedi.
+**Ölçülen sonuç:** 1097 dosyalık bir üçüncü taraf repoda üç ayrı soru seti üzerinde. En zor set,
+cevabı birden çok dosyaya yayılan ve aralarında birbirine çok benzeyen varyantlar bulunan
+sorulardan oluşuyor; **hiçbir ayarın görmediği test bölmesinde cevap doğruluğu %100, dosya kapsamı
+%93.** Akış sorularında %95 doğruluk / %84 kapsam, tek konumlu sorularda %100 doğruluk. Uydurma
+referans hiçbir koşuda görülmedi.
 
 ## İçindekiler
 
@@ -193,26 +194,11 @@ eşleşme varsa cevabın kendi içinde tam yazılmış yollar bağlam olarak kul
 **Prompt caching açık.** Model her tool turunda geçmişi yeniden gönderiyor. Ölçülen fark: aynı
 soruda 42.000 taze girdi token'ı yerine 8 taze + 18.500 önbellekten.
 
-**Denenip geri alınan: prompt'a eksiksizlik kuralları.** Zor sette şu görüldü: 29 beklenen
-dosyanın 12'si bağlamdayken cevapta hiç geçmiyordu. Prompt'a üç kural eklendi (mekanizma birden
-çok dosyaya yayılıyorsa hepsini referansla, sync/async gibi varyantları da say, bitirmeden önce
-verilen parçaları gözden geçir) ve zor sette dosya kapsamı %57 → %72 çıktı.
-
-Kurallar o setin hatalarına bakılarak yazılmıştı — birinci kuraldaki örnek `z01`'in, ikincisi
-`z10`'un hata kalıbıydı. Genellenip genellenmediği, prompt'un hiç görmediği akış setinde ölçüldü:
-
-| Akış seti (20 soru) | doğruluk | dosya kapsamı | referans/cevap |
-|---------------------|----------|---------------|----------------|
-| Eski prompt | 95% | 84% | 2.8 |
-| Yeni prompt | 95% | **84%** | 3.5 |
-
-**Kapsam birebir aynı, referans sayısı %25 arttı.** Yani kazanç yok, gürültü var. "Akış seti
-tavana yakın olduğu için fark gösteremedi" savunması tutmuyor: %84'ten %100'e 16 puanlık alan
-vardı ve kuralların hiçbiri o alanı kullanamadı.
-
-Değişiklik geri alındı. Zor setteki %15'in ne kadarı aşırı uyum, ne kadarı "kapsam düşükken işe
-yarıyor" ayrımı bu veriyle yapılamıyor — ayırmak için prompt'un görmediği **ve kapsamı düşük**
-üçüncü bir set gerekiyor.
+**Denenip geri alınan: prompt'a eksiksizlik kuralları.** Zor sette 29 beklenen dosyanın 12'si
+bağlamdayken cevapta hiç geçmiyordu; prompt'a "mekanizma birden çok dosyaya yayılıyorsa hepsini
+referansla" türü üç kural eklendi ve kapsam %57 → %72 çıktı. Kurallar o setin hatalarına bakılarak
+yazıldığı için görmediği bir sette sınandı, kazanç sıfır çıktı ve değişiklik geri alındı. Ayrıntı:
+[Kendini kandırmanın üç yolu](#kendini-kandırmanın-üç-yolu-ve-üçünün-de-yakalanışı).
 
 ## Ölçüm
 
@@ -258,62 +244,40 @@ bakılmadan yazıldı; rapor edilecek sayı oradan alınır.
 Çok dosyalı sorularda asıl ölçüt **kapsam**, recall değil: "en az bir beklenen dosyayı bulduysan
 başarılı" saymak kolay — üç dosyadan birini bulmak yetiyor.
 
-**Cevap (zor set, 12 soru, hepsi `claude-haiku-4-5`):**
+**Cevap (hepsi `claude-haiku-4-5`, tek fark bağlam):**
 
-**Zor set (12 soru, o zaman bölünmemişti):**
+| Set | Genişletmeler | parça | doğruluk | **dosya kapsamı** | uydurma | referans/cevap |
+|-----|---------------|-------|----------|-------------------|---------|----------------|
+| Zor (12, bölünmemiş hâli) | kapalı | 8 | 75% | 46% | 0 | 1.3 |
+| Zor (12, bölünmemiş hâli) | açık | 15 | 100% | 57% | 0 | 2.1 |
+| Akış (20, doğrulama) | kapalı | 8 | 90% | 79% | 1 | 2.1 |
+| Akış (20, doğrulama) | açık | 15 | 95% | 84% | 0 | 2.8 |
+| **Zor — test (14)** | açık | 15 | **100%** | **93%**\* | **0** | 2.7 |
 
-| Yapılandırma | parça | doğruluk | **dosya kapsamı** | uydurma | referans/cevap |
-|--------------|-------|----------|-------------------|---------|----------------|
-| Genişletmeler kapalı | 8 | 75% | 46% | 0 | 1.3 |
-| **Genişletmeler açık** | 15 | **100%** | **57%** | 0 | 2.1 |
-
-Bu ölçüm tek başına yeterli değildi: dizin kardeşi ekseni `z05`/`z06`'nın, import bağı ekseni
-`z03`'ün hatalarına bakılarak tasarlanmıştı — yani ölçüldüğü set tasarım sırasında görülmüştü.
-Doğrulama, tasarım sırasında hiç bakılmayan akış setinde yapıldı:
-
-**Akış seti (20 soru, doğrulama):**
-
-| Yapılandırma | getirme kapsamı | doğruluk | **dosya kapsamı** | uydurma | referans/cevap |
-|--------------|-----------------|----------|-------------------|---------|----------------|
-| Genişletmeler kapalı | 84% | 90% | 79% | 1 | 2.1 |
-| **Genişletmeler açık** | 91% | **95%** | **84%** | **0** | 2.8 |
-
-Görülmemiş sette de aynı yön: doğruluk +5, kapsam +5, uydurma referans 1'den 0'a. Aynı gün
-denenen prompt değişikliği bu sınavı geçemedi (aşağıda); genişletmeler geçti.
-
-**Zor set — test bölmesi (14 soru, hiçbir ayarın görmediği veri):**
-
-| Metrik | Sonuç |
-|--------|-------|
-| Getirme kapsamı | 93%\* |
-| Cevap doğruluğu | **100%** |
-| **Cevap dosya kapsamı** | **93%**\* |
-| Uydurma referans | 0 |
-| Referans/cevap | 2.7 |
-
-Cevap kapsamının getirme kapsamına eşit çıkması dikkat çekici: cevaplama katmanı getirmenin
-tamamını kullanıyor. Eski zor sette bu iki sayı arasında 37 puan fark vardı (getirme %94, cevap
-%57); aradaki farkı kapatan şey genişletmeler oldu.
-
-\* **Ölçüm düzeltmesi içeriyor, sistem kazancı değil.** İlk koşuda iki sayı da %86/%89'du. Dört
-kısmi hatanın ikisinde etiketin fazla cömert olduğu görüldü: `z13` arşiv çıkarma güvenliğini
-soruyor ama etikette `agent_toolset.py` da vardı — o dosya `_within`'i kendi yol kısıtlaması için
-kullanıyor, arşiv güvenliğinin tamamı `_skills.py`'de. `z23` çakışmanın nerede yakalandığını
-soruyor ama etikette `_exceptions.py` vardı — orada yalnızca taban sınıf `AnthropicError` duruyor.
-
-Tek yönlü düzeltme olmaması için **on dört sorunun tamamı** aynı titizlikle gözden geçirildi,
-yalnızca sistemin kaçırdıkları değil. Kalan on ikisinde etiketler yerinde kaldı; `z15`'te
-`PageInfo` gerçekten `_base_client.py`'de ve `z24`'teki kayıp gerçek bir getirme hatası.
-
-Getirme metriği bu çalışmada tek başına yeterli değil: kapsam, eklenen slot sayısıyla matematiksel
-olarak **düşemez**, yani her ekleme kendini haklı çıkarır. Kararı cevap ölçümü verdi. Son sütun o
+Getirme metrikleri tek başına yeterli değil: kapsam, eklenen slot sayısıyla matematiksel olarak
+**düşemez**, yani her ekleme kendini haklı çıkarır. Kararı cevap ölçümü verdi. Son sütun o
 ölçümün kontrolü — kapsam artarken referans sayısı patlamadıysa model her şeyi saymıyor, hedefe
 daha çok isabet ediyor demektir.
 
-Model seçimi hakkında: aynı ölçüm `claude-opus-5` ile %82 dosya kapsamı vermişti, yani Haiku'nun
-%57'si mutlak olarak daha düşük. Ama **ölçüm aleti olarak Haiku daha iyi çıktı** — Opus tavana
-yakın çalıştığı için kolları ayırt edemiyordu. Maliyet farkı da var: iki Haiku koşusu $0.55, tek
-Opus koşusu $10.75.
+İlk iki satır tek başına kanıt değildi: genişletme eksenleri zor setin hatalarına bakılarak
+tasarlanmıştı (dizin kardeşi `z05`/`z06`'ya, import bağı `z03`'e). Doğrulama, tasarım sırasında
+hiç bakılmayan akış setinde yapıldı ve aynı yönü verdi: doğruluk +5, kapsam +5, uydurma referans
+1'den 0'a.
+
+Son satır projenin en temiz sayısı: hiçbir ayarın görmediği 14 soru. Cevap kapsamının getirme
+kapsamına eşit çıkması dikkat çekici — cevaplama katmanı getirmenin tamamını kullanıyor. Zor setin
+ilk hâlinde bu iki sayı arasında 37 puan fark vardı.
+
+Model seçimi hakkında: aynı ölçüm `claude-opus-5` ile daha yüksek mutlak sonuç veriyor, ama
+**ölçüm aleti olarak Haiku daha iyi çıktı** — Opus tavana yakın çalıştığı için kolları ayırt
+edemiyordu. Maliyet farkı da var: iki Haiku koşusu $0.55, tek Opus koşusu $10.75.
+
+\* **Ölçüm düzeltmesi içeriyor, sistem kazancı değil.** İlk koşuda %86/%89'du. Dört kısmi hatanın
+ikisinde etiketin fazla cömert olduğu görüldü: `z13` arşiv çıkarma güvenliğini soruyor ama etikette
+`agent_toolset.py` da vardı — o dosya `_within`'i kendi yol kısıtlaması için kullanıyor, arşiv
+güvenliğinin tamamı `_skills.py`'de. `z23` çakışmanın nerede yakalandığını soruyor ama etikette
+`_exceptions.py` vardı — orada yalnızca taban sınıf duruyor. Tek yönlü düzeltme olmaması için on
+dört sorunun tamamı gözden geçirildi; kalan on ikisinde etiketler yerinde kaldı.
 
 **Nasıl buraya gelindi (kolay set, saf vektör):**
 
@@ -346,12 +310,6 @@ dengeliyor. İkisi birlikte her iki metrikte de başlangıcın üstünde.
 ## Öğrenilenler
 
 Bu bölüm sonuçların en değerli kısmı: neyin işe yaramadığı da veriyle biliniyor.
-
-### Getirme mükemmel olmak zorunda değil
-
-Getirme recall'ı %88 ama cevap doğruluğu %100. Bir soruda arama doğru parçayı ilk 8'e sokamadı,
-model `search_symbol` ile kendisi bulup doğru cevap verdi. **Recall'ı tek başına kalite göstergesi
-saymak yanlış olurdu** — tool katmanının varlık sebebi tam olarak bu.
 
 ### Hibrit arama bedava kazanç değil
 
@@ -397,28 +355,51 @@ Reranking MRR'ı 0.702 → 0.750 çıkardı. RRF ağırlıklarını ayarlamak (b
 0.738'e çıkardı. İkisi birlikte yine 0.750 — reranker sıralamayı baştan kurduğu için ağırlığın
 etkisini siliyor.
 
-### Kendi metriğini ödüllendiren bir iyileştirme, iyileştirme değildir
+### Kendini kandırmanın üç yolu ve üçünün de yakalanışı
 
-Akış kapsamını artırmak için önce **sert kota** denendi: ilk k içinde dosya başına en fazla 1
-parça. Kapsam anında yükseldi (akış 0.750 → 0.867, kolay 0.925 → 0.950) ve karar verilebilirdi.
+Bu bölüm sonuçların en değerli kısmı: ölçüm düzeneğinin asıl işi iyi haber üretmek değil, kötü
+haberi saklamamak.
 
-Verilmedi, çünkü kapsam metriği dosya çeşitliliğini ödüllendiriyor ve kota tam olarak çeşitliliği
-artırıyor — müdahale kendi ölçütünü tanım gereği memnun ediyordu. Döngüyü kıracak bağımsız bir
-ölçüte bakıldı: **sembol isabeti** (doğru dosyanın doğru fonksiyonu geldi mi). Orada sonuç
-**0.778 → 0.444** düştü.
+**1. Metriğin müdahaleyi tanım gereği ödüllendirmesi.** Akış kapsamını artırmak için önce *sert
+kota* denendi: ilk k içinde dosya başına en fazla 1 parça. Kapsam anında yükseldi (akış 0.750 →
+0.867) ve karar verilebilirdi. Verilmedi, çünkü kapsam metriği dosya çeşitliliğini ödüllendiriyor
+ve kota tam olarak çeşitliliği artırıyordu. Döngüyü kıracak bağımsız bir ölçüte bakıldı — **sembol
+isabeti** (doğru dosyanın doğru fonksiyonu geldi mi) — ve orada sonuç **0.778 → 0.444** düştü.
 
-Sebep tek tek incelendi: iki ilgili parça gerçekten aynı dosyada olabiliyor — sync/async ikizleri,
-decoder + accumulator çifti — ve sert kota bunlardan birini kesiyordu. Bir vaka ise ölçüm
-artefaktıydı: beklenen `Anthropic.copy`, kota `AsyncAnthropic.copy`'yi tutmuştu; cevap aynı,
-etiket ikizlerden birini yazdığı için hata sayılıyordu.
+Sebep tek tek incelendi: iki ilgili parça gerçekten aynı dosyada olabiliyor (sync/async ikizleri,
+decoder + accumulator çifti) ve sert kota bunlardan birini kesiyordu. Bir vaka ölçüm artefaktıydı:
+beklenen `Anthropic.copy`, kota `AsyncAnthropic.copy`'yi tutmuştu; cevap aynı, etiket ikizlerden
+birini yazdığı için hata sayılıyordu.
 
-Yumuşak ceza da çare olmadı. RRF skorları `1/(60+sıra)` biçiminde olduğu için fazla sıkışık:
-0.8'in altındaki her çarpan pratikte sert kotaya dönüşüyor, üstündeki hiçbir şey yapmıyor.
-
-Çalışan yaklaşım **hiçbir şeyi elemeyen** genişletme oldu: ilk k dokunulmadan kalıyor, arkasına
-yeni dosyalar ekleniyor. Kritik kontrol, kazancın "daha çok parça verdik"ten gelmediğini
-göstermek oldu — eşit bütçede (12 parça) düz top-12 akış kapsamını 0.750'de bırakıyor, genişletme
+Yumuşak ceza da çare olmadı: RRF skorları `1/(60+sıra)` biçiminde olduğu için fazla sıkışık,
+0.8'in altındaki her çarpan pratikte sert kotaya dönüşüyor. Çalışan yaklaşım **hiçbir şeyi
+elemeyen** genişletme oldu. Kritik kontrol, kazancın "daha çok parça verdik"ten gelmediğini
+göstermek oldu: eşit bütçede (12 parça) düz top-12 akış kapsamını 0.750'de bırakıyor, genişletme
 0.833'e çıkarıyor.
+
+**2. Ayar yapılan sette rapor vermek.** Zor set dev/test bölündükten sonra üç iyileştirme denendi.
+Üçü de dev'in hatalarına bakılarak tasarlandı, üçü de o hataları düzeltti:
+
+| Deneme | dev | **test** |
+|--------|-----|----------|
+| Prompt'a eksiksizlik kuralları | +15 puan kapsam | **0** (akış setinde ölçüldü) |
+| Yeniden dışa aktarım kabuklarını geri itme | +0.042 MRR | **0** |
+| İmport bağının ileri yönü | +5.6 puan kapsam | **0** |
+
+Üçü de makul fikirlerdi. Prompt kuralları gerçek bir boşluğu kapatıyordu (dosyalar bağlamdayken
+referans verilmiyordu), yeniden dışa aktarım kuralı "metotsuz sınıf alan listesidir" kuralının
+modül karşılığıydı, ileri yön `_fallbacks.py` ilk sıradayken onun import ettiği `_middleware.py`
+ilk 200'de olmadığı için gerekliydi. Hiçbiri genellenmedi.
+
+**Bölme olmasaydı üçü de rapora "iyileştirme" diye girecekti.** İkincisi ve üçüncüsü kod olarak
+duruyor, varsayılan kapalı; birincisi geri alındı çünkü karşılığında %25 fazla referans
+üretiyordu.
+
+**3. Yalnızca başarısızlıkların etiketini sorgulamak.** Test bölmesindeki dört kısmi hatanın
+ikisinde etiket fazla cömertti. Düzeltmek meşru ama tehlikeli: yalnızca sistemin kaçırdığı
+etiketlere bakıp geçtiklerine bakmamak, skoru tek yönlü şişirir. On dört sorunun tamamı aynı
+titizlikle gözden geçirildi; kalan on ikisinde etiketler yerinde kaldı. Sayı %86'dan %93'e çıktı
+ve **ölçüm düzeltmesi** olarak işaretlendi, sistem kazancı olarak değil.
 
 ### Tek başına işe yaramayan iki şey birlikte yarayabilir
 
@@ -446,36 +427,6 @@ yapılandırmada çıktı. **Ölçülüp reddedilen bir fikir, koşullar değiş
 Not: "generated" dosya işareti kullanılamaz bir sinyal — bu SDK'da dosyaların %92'si öyle
 işaretli, sorularımızın gerçek cevapları dahil.
 
-### Dev'den çıkan iki mekanizma da test'te sıfır verdi
-
-Zor set dev/test bölündükten sonra ilk deneme: dev hataları incelendi, iki genel mekanizma
-tasarlandı, dev'de ölçüldü, sonra test'te ölçüldü.
-
-| | dev kapsam | dev MRR | **test kapsam** | **test MRR** | parça |
-|---|-----------|---------|-----------------|--------------|-------|
-| Önceki hâl | 0.944 | 0.694 | 0.893 | 0.847 | 15.1 |
-| + yeniden dışa aktarım kabuklarını geri itme | 0.944 | **0.736** | 0.893 | 0.847 | 15.0 |
-| + import bağının ileri yönü | **1.000** | 0.736 | 0.893 | 0.847 | 17.0 |
-
-Dev'de kapsam +5.6 puan ve MRR +0.042; test'te **ikisi de tam sıfır**, üstelik ileri yön soru
-başına 2 parça daha götürüyor.
-
-İkisi de makul fikirlerdi. Yeniden dışa aktarım kuralı, "metotsuz sınıf alan listesidir"
-kuralının modül karşılığı: `MessageStreamEvent = RawMessageStreamEvent` hiçbir değer taşımıyor,
-`DEFAULT_MAX_RETRIES = 2` taşıyor. İleri yön de gerçek bir boşluğu kapatıyordu — `_fallbacks.py`
-ilk sıradayken onun import ettiği `_middleware.py` ilk 200'de bile yoktu.
-
-Ama ikisi de dev'in hatalarına bakılarak tasarlandı ve tam olarak o hataları düzelttiler. Test
-bölmesi olmasaydı ikisi de "kazanç" diye rapor edilecekti — nitekim aynı gün prompt değişikliğinde
-tam olarak bu olmuştu.
-
-Kod duruyor, varsayılan kapalı (`DEMOTE_REEXPORT_MODULES`, `REFERENCE_FORWARD_SLOTS`). Bu
-projede daha önce bir kez, ölçülüp kapatılan bir ayarın koşullar değişince yeniden ölçülüp
-açıldığı oldu.
-
-**Asıl ders bölmenin kendisinde:** üç denemeden üçü dev'de kazandı, üçü de test'te kaybetti.
-Bölme olmasaydı üçü de rapora "iyileştirme" diye girecekti.
-
 ### Aynı hata iki kez, iki farklı kılıkta
 
 Önbellek katmanında art arda iki performans hatası çıktı ve ikisi de aynı kök sebebe dayanıyordu:
@@ -502,16 +453,24 @@ saniyeden 6,3 saniyeye indi.
 İkisi de teste bağlandı. İkincisinin testi zamanlama ölçmüyor (kırılgan olurdu); dizinin arşivden
 kaç kez açıldığını sayıyor.
 
-### Getirmeyi düzeltmek her zaman cevabı düzeltmiyor
+### Getirme ile cevap ayrı ayrı ölçülmeli, çünkü ikisi ayrı ayrı bozuluyor
 
-Zor sette getirme kapsamı %94, cevap dosya kapsamı %57'ydi. Aradaki 37 puan tamamen cevaplama
-katmanında kaybediliyordu: 29 beklenen dosyanın 12'si **bağlamdayken** cevapta hiç geçmiyordu.
+İki yönde de ayrıştıkları görüldü.
 
-Bir ihtimal daha vardı — model dosyadan söz edip `dosya:satır` biçimini kaçırmış olabilirdi, yani
-sorun metrikte olabilirdi. Ölçüldü: 29 dosyanın yalnızca 1'i öyleydi. Yani sorun biçim değil,
-eksiklikti ve çözümü prompt'taydı (bkz. [Cevaplama](#cevaplama)).
+**Getirme eksik, cevap doğru.** Erken ölçümlerde recall %88'ken cevap doğruluğu %100'dü. Arama
+doğru parçayı ilk 8'e sokamadığı bir soruda model `search_symbol` ile kendisi bulup doğru cevap
+verdi. Recall'ı tek başına kalite göstergesi saymak yanlış olurdu — tool katmanının varlık sebebi
+tam olarak bu.
 
-Çıkarım: getirme ve cevap ayrı ayrı ölçülmeseydi bu 37 puanın nerede kaybolduğu görülemezdi.
+**Getirme iyi, cevap eksik.** Zor setin ilk hâlinde getirme kapsamı %94, cevap dosya kapsamı
+%57'ydi. Aradaki 37 puan tamamen cevaplama katmanında kaybediliyordu: 29 beklenen dosyanın 12'si
+**bağlamdayken** cevapta hiç geçmiyordu. Bir ihtimal daha vardı — model dosyadan söz edip
+`dosya:satır` biçimini kaçırmış olabilirdi, yani sorun metrikte olabilirdi. Ölçüldü: 29 dosyanın
+yalnızca 1'i öyleydi.
+
+O 37 puanlık farkı genişletme eksenleri kapattı. Test bölmesinde iki sayı artık neredeyse eşit
+(getirme %93, cevap %93). Ama iki metrik ayrı ayrı ölçülmeseydi farkın nerede olduğu hiç
+görülemezdi.
 
 ## Dosya yapısı
 
@@ -535,31 +494,44 @@ eval/
   questions_anthropic.json  SDK, 60 soru (tek konum)
   questions_akis.json       SDK, 20 soru (akış, 2-4 dosya)
   questions_zor.json        SDK, 26 soru (12 dev / 14 test)
-tests/           209 birim testi — ağ ve API anahtarı gerektirmiyor
+tests/           211 birim testi — ağ ve API anahtarı gerektirmiyor
 data/, runs/     üretilen çıktılar (git'e girmez)
 ```
 
 ## Sıradaki adımlar
 
-1. **Dizin genişletmesini temsil gücüne göre sıralamak** (denenmemiş aday). Teşhis test
-   bölmesindeki `z24`'te yapıldı: ilk 8 sonucun tamamı tek dosyadan (`lib/tools/mcp.py`)
-   geliyor, aranan `lib/tools/_tool_dispatch.py` 45. sırada. `lib/tools/` dizini ilk 14
-   sonucun 10'unu kaplıyor ama dizin slotları `types/beta/`'ya gitti — çünkü genişletme
-   sıralamada **önce rastladığı** dizini seçiyor, en güçlü temsil edileni değil.
-   Denenirse `z24` test'ten dev'e taşınmalı ve rapor edilen sayı kalan 13 sorudan alınmalı.
+1. **Çok dilli ölçüm.** Sekiz dil destekleniyor, doğruluk yalnızca Python'da ölçüldü. Java ya da
+   C++ bir repoda soru seti hazırlanıp ölçüm tekrarlanmalı. Önce müşteri projelerinin ağırlıklı
+   dili öğrenilmeli, yoksa körlemesine olur.
 
-2. **Prompt düzeltmesini görmediği bir sette sınamak** — eksiksizlik kuralları zor setin
-   hatalarına bakılarak yazıldı, yani o sete ayar yapıldı. Akış setinde eski/yeni prompt yan yana
-   koşulmalı (~$0.90). Sonuç genelleniyorsa %72 gerçek; genellemiyorsa raporda öyle yazılmalı.
-3. **Çok dilli ölçüm** — sekiz dil destekleniyor, doğruluk yalnızca Python'da ölçüldü. Java ya da
-   C++ bir repoda soru seti gerekiyor. Önce müşteri projelerinin ağırlıklı dili öğrenilmeli.
-4. **Demo** — akış hazır: [DEMO.md](DEMO.md). Komutların hepsi çalıştırılarak doğrulandı,
-   fallback yolları dahil.
-5. **`d36` etiketi gözden geçirilmeli** — "zamanlanmış çalıştırmalar hangi kaynak üzerinden
+2. **Zor setin test bölmesi büyütülmeli.** Şu an 14 soru; bir soru ~3.5 puan ediyor, yani tek bir
+   soruluk oynama gürültü seviyesinde. Ayrıca her yeni deneme test'ten soru harcıyor (aşağıya
+   bakın) — bölme bir bütçe ve şu an dar.
+
+3. **`d36` etiketi gözden geçirilmeli.** "Zamanlanmış çalıştırmalar hangi kaynak üzerinden
    yönetiliyor" sorusunun etiketi `resources/beta/deployments.py`, ama arama
-   `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Etiket
-   düzeltilirse **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
+   `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Düzeltilirse
+   **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
 
-**Kalan açık:** zor sette 8 eksik dosyanın 6'sı bağlamda olduğu hâlde referans verilmiyor, 2'sini
-getirme kaçırıyor. Yani kaldıraç hâlâ cevaplama tarafında — ama prompt'u aynı sete göre bir kez
-daha ayarlamak ölçümü tamamen anlamsızlaştırır. Önce 1. madde.
+### Denenmemiş aday: dizin genişletmesini temsil gücüne göre sıralamak
+
+Teşhis test bölmesindeki `z24`'te yapıldı: ilk 8 sonucun tamamı tek dosyadan
+(`lib/tools/mcp.py`) geliyor, aranan `lib/tools/_tool_dispatch.py` 45. sırada. `lib/tools/`
+dizini ilk 14 sonucun 10'unu kaplıyor ama dizin slotları `types/beta/`'ya gitti — çünkü
+genişletme sıralamada **önce rastladığı** dizini seçiyor, en güçlü temsil edileni değil.
+
+Denenmedi, çünkü bedeli var: `z24` test bölmesinde ve ona göre bir şey ayarlanırsa soru dev'e
+taşınmalı, rapor edilen sayı kalan 13'ten alınmalı. Dev'den çıkan üç mekanizmanın üçü de test'te
+sıfır verdikten sonra, tek soruya bakarak tasarlanacak dördüncüsü için bir test sorusu harcamak
+iyi bir alışveriş görünmedi.
+
+### Kapanan maddeler
+
+- **Akış kapsamını %80'in üzerine çıkarmak** — test bölmesinde %91.
+- **Cevap tarafını zor sette ölçmek** — yapıldı, test bölmesinde %93 dosya kapsamı.
+- **`types/` gürültüsü** — 60 soruluk sette bulunamayan dört sorunun üçü çeşitlilik slotlarıyla
+  çözüldü. İlginç olan, `types/` parçalarının payının **artmış** olması (%15 → %21): sorun tip
+  tanımlarının varlığı değil, gerçek cevaba yer kalmamasıymış.
+- **Demo** — akış hazır: [DEMO.md](DEMO.md). Komutların hepsi çalıştırılarak doğrulandı,
+  MCP protokol düzeyinde (`initialize` → `tools/list` → `tools/call`) sınandı, fallback yolları
+  denendi.

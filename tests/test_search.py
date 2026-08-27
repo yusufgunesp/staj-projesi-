@@ -27,6 +27,7 @@ from codeqa.search import (
     VectorSearch,
     build_import_graph,
     chunk_weight,
+    extend_with_imported_files,
     extend_with_referencing_files,
     extend_with_sibling_files,
     extend_with_unseen_files,
@@ -693,3 +694,40 @@ def test_cache_save_reads_each_disk_array_once(tmp_path, embedder, monkeypatch):
 
     # 25 anahtar var; dizi anahtar başına değil, kaydetme başına okunmalı.
     assert sayac["vectors"] <= 2, f"vektör dizisi {sayac['vectors']} kez açıldı"
+
+
+def test_imported_files_expansion_skips_hubs_and_reexport_shims():
+    """İleri yön gürültülü: hub'lar ve değer taşımayan kabuklar elenmeli."""
+    records = [
+        _module_record("lib/x.py", "from ._models import Base\nfrom ._shim import Alias"),
+        _module_record("lib/_models.py", "class Base: ..."),
+        _module_record("lib/_shim.py", "from .real import Real\nAlias = Real"),
+        _module_record("lib/real.py", "def helper(): ..."),
+    ]
+    # _models.py'yi çok sayıda dosya kullanıyor gibi göster
+    records += [_module_record(f"u{i}.py", "from .lib._models import Base") for i in range(30)]
+    graph = build_import_graph(records)
+    selected = [SearchHit(record=records[0], score=1.0, sources=("vector",))]
+    out = extend_with_imported_files(
+        records, graph, list(selected), lambda h: h.record["path"],
+        slots=4, rank_key=lambda _record: 1.0,
+    )
+    eklenen = {h.record["path"] for h in out} - {"lib/x.py"}
+    assert "lib/_models.py" not in eklenen  # hub
+    assert "lib/_shim.py" not in eklenen  # yeniden dışa aktarım kabuğu
+
+
+def test_imported_files_expansion_respects_slot_budget():
+    records = [
+        _module_record("a.py", "from .b import x\nfrom .c import y\nfrom .d import z"),
+        _module_record("b.py", "x = 1"),
+        _module_record("c.py", "y = 2"),
+        _module_record("d.py", "z = 3"),
+    ]
+    graph = build_import_graph(records)
+    selected = [SearchHit(record=records[0], score=1.0, sources=("vector",))]
+    out = extend_with_imported_files(
+        records, graph, list(selected), lambda h: h.record["path"],
+        slots=2, rank_key=lambda _record: 1.0,
+    )
+    assert len(out) == 3  # 1 mevcut + 2 slot
