@@ -18,6 +18,8 @@ from codeqa.embeddings import (
 )
 from codeqa.indexer import extract_from_source
 from codeqa.search import (
+    DEMOTE_REEXPORT_MODULES,
+    REFERENCE_FORWARD_SLOTS,
     TYPE_ONLY_WEIGHT,
     BM25Search,
     HybridSearch,
@@ -28,6 +30,7 @@ from codeqa.search import (
     extend_with_referencing_files,
     extend_with_sibling_files,
     extend_with_unseen_files,
+    is_reexport_module,
     reciprocal_rank_fusion,
 )
 
@@ -564,12 +567,15 @@ def test_import_graph_resolves_relative_imports():
         _module_record("lib/tools/_runner.py", "from .._retry import backoff"),
     ]
     graph = build_import_graph(records)
-    assert graph["lib/_retry.py"] == {"lib/environments/_poller.py", "lib/tools/_runner.py"}
+    assert graph.users["lib/_retry.py"] == {"lib/environments/_poller.py", "lib/tools/_runner.py"}
+    # ters yön: kim neyi kullanıyor
+    assert graph.imports["lib/environments/_poller.py"] == {"lib/_retry.py"}
 
 
 def test_import_graph_ignores_targets_outside_the_index():
     records = [_module_record("lib/x.py", "from ..nonexistent import thing")]
-    assert build_import_graph(records) == {}
+    graph = build_import_graph(records)
+    assert graph.users == {} and graph.imports == {}
 
 
 def test_reference_expansion_adds_users_of_a_selected_file():
@@ -626,3 +632,22 @@ def test_type_only_class_is_demoted_but_class_with_methods_is_not():
     }
     assert chunk_weight(field_only) == TYPE_ONLY_WEIGHT
     assert chunk_weight(with_methods) == 1.0
+
+
+def test_reexport_module_is_recognised_but_constants_module_is_not():
+    """`X = Y` yeniden dışa aktarımdır; `DEFAULT_MAX_RETRIES = 2` gerçek bir değerdir."""
+    reexport = "from .raw import RawEvent\n__all__ = ['Event']\nEvent = RawEvent"
+    constants = "import httpx\nDEFAULT_MAX_RETRIES = 2\nDEFAULT_TIMEOUT = httpx.Timeout(600)"
+    assert is_reexport_module(reexport)
+    assert not is_reexport_module(constants)
+
+
+def test_reexport_demotion_is_off_by_default():
+    """Dev'de MRR +0.042, test'te 0 — ölçülmüş faydası olmayan ayar açık gelmemeli."""
+    assert DEMOTE_REEXPORT_MODULES is False
+    shim = {"kind": "module", "text": "from .raw import RawEvent\nEvent = RawEvent"}
+    assert chunk_weight(shim) == 1.0
+
+
+def test_forward_reference_expansion_is_off_by_default():
+    assert REFERENCE_FORWARD_SLOTS == 0

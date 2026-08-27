@@ -1,5 +1,5 @@
 {
-  "_aciklama": "ÇOK ZOR SET — akış seti de tavana vurduğu için hazırlandı (getirme kapsamı %90, cevap doğruluğu %100). Bu set üç eksende zorlaştırıyor: (1) TUZAK — doğru dosyanın neredeyse birebir ikizleri var (lib/aws vs lib/bedrock aynı fonksiyon adlarını taşıyor, _messages vs _beta_messages, sync/async çiftleri), embedding araması yanlış varyantı getirmeye eğilimli; (2) ÇAPASIZ — soru kelimeleri kodda geçmiyor, lib/credentials altındaki dokuz dosyanın hiçbirinde modül docstring'i bile yok; (3) GENİŞ — cevap 2-4 değil 3-5 dosyaya yayılıyor. Sorular davranış soruyor ('kaç kez çalışır', 'hangisi fiilen kullanılıyor'), konum değil. Beklenen dosyaların tamamı kaynak kodda okunarak doğrulandı; her sorunun `note` alanı doğrulamanın nereye dayandığını yazıyor.",
+  "_aciklama": "ÇOK ZOR SET — akış seti de tavana vurduğu için hazırlandı (getirme kapsamı %90, cevap doğruluğu %100). Bu set üç eksende zorlaştırıyor: (1) TUZAK — doğru dosyanın neredeyse birebir ikizleri var (lib/aws vs lib/bedrock aynı fonksiyon adlarını taşıyor, _messages vs _beta_messages, sync/async çiftleri), embedding araması yanlış varyantı getirmeye eğilimli; (2) ÇAPASIZ — soru kelimeleri kodda geçmiyor, lib/credentials altındaki dokuz dosyanın hiçbirinde modül docstring'i bile yok; (3) GENİŞ — cevap 2-4 değil 3-5 dosyaya yayılıyor. Sorular davranış soruyor ('kaç kez çalışır', 'hangisi fiilen kullanılıyor'), konum değil. Beklenen dosyaların tamamı kaynak kodda okunarak doğrulandı; her sorunun `note` alanı doğrulamanın nereye dayandığını yazıyor. dev/test ayrımı: ilk 12 soru (z01-z12) DEV — genişletme eksenleri bu soruların hatalarına bakılarak tasarlandığı için kirlenmiş sayılıyorlar. z13-z26 TEST — hiçbir ayara bakılmadan yazıldılar, rapor edilecek sayı buradan alınır.",
   "repo": ".venv/lib/python3.14/site-packages/anthropic",
   "index": "data/anthropic.jsonl",
   "questions": [
@@ -68,7 +68,7 @@
     },
     {
       "id": "z07",
-      "split": "test",
+      "split": "dev",
       "question": "AWS üzerinden iki ayrı bağlanma yolu var; istek imzalama başlıkları her biri için nerede üretiliyor ve nerede ayrışıyorlar?",
       "expect_files": [
         "lib/aws/_auth.py",
@@ -79,7 +79,7 @@
     },
     {
       "id": "z08",
-      "split": "test",
+      "split": "dev",
       "question": "Model bir isteği reddettiğinde istek başka bir modele nasıl aktarılıyor ve akış hâlindeki cevap istemciye tek parça gibi nasıl gösteriliyor?",
       "expect_files": [
         "lib/middleware/_fallbacks.py",
@@ -90,7 +90,7 @@
     },
     {
       "id": "z09",
-      "split": "test",
+      "split": "dev",
       "question": "Konuşma ortasında kullanılabilir araç listesi değiştiğinde bu değişiklik nasıl işleniyor ve bir araç çalışırken hata fırlatırsa ne gönderiliyor?",
       "expect_files": [
         "lib/tools/_tool_dispatch.py",
@@ -100,7 +100,7 @@
     },
     {
       "id": "z10",
-      "split": "test",
+      "split": "dev",
       "question": "Akış olaylarının tam mesaja katlanması iki ayrı yerde yazılmış; hangi yüzey hangisini kullanıyor ve neden ikiye ayrılmışlar?",
       "expect_files": [
         "lib/streaming/_messages.py",
@@ -110,7 +110,7 @@
     },
     {
       "id": "z11",
-      "split": "test",
+      "split": "dev",
       "question": "Bedrock tarafında ayrı bir anahtar biçimiyle çalışan bir mod var; hangi ortam değişkenlerine bakıyor ve normal yoldan nerede ayrılıyor?",
       "expect_files": [
         "lib/bedrock/_mantle.py",
@@ -120,13 +120,153 @@
     },
     {
       "id": "z12",
-      "split": "test",
+      "split": "dev",
       "question": "Kendi sunucusunda çalışan bir işçi iş kuyruğundan görev alırken, alamadığı ya da işleyemediği bir görev olursa ne yapıyor?",
       "expect_files": [
         "lib/environments/_poller.py",
         "lib/environments/_worker.py"
       ],
       "note": "iter_work (_poller.py:53-95) işleri talep ediyor, reclaim_older_than_ms ile onaylanmamış işleri geri alıyor. İşlenemeyen bir öğe için _force_stop_quietly en iyi çabayla work.stop(force=True) çağırıyor (async karşılığı _aforce_stop_quietly). _worker.py bu döngüyü tam bir işçiye bağlıyor ve poll/worker istemcilerini _copy_client_with_bearer_auth ile kuruyor (311, 393)."
+    },
+    {
+      "id": "z13",
+      "split": "test",
+      "question": "Bir skill arşivi diskten açılırken çıkarma dizininin dışına yazılması nasıl engelleniyor ve arşivdeki sembolik bağlara ne oluyor?",
+      "expect_files": [
+        "lib/tools/_skills.py"
+      ],
+      "note": "_extract_skill_archive + _within + _safe_member_name. ÖLÇÜM DÜZELTMESİ: agent_toolset.py etiketten çıkarıldı — _within'i kendi yol kısıtlaması için kullanıyor, arşiv çıkarma güvenliğinin tamamı _skills.py'de."
+    },
+    {
+      "id": "z14",
+      "split": "test",
+      "question": "Dizin dışına kaçışa karşı iki ayrı koruma var: biri bellek aracında, biri arşiv çıkarıcıda. Hangisi nerede ve nasıl farklılar?",
+      "expect_files": [
+        "lib/tools/_beta_builtin_memory_tool.py",
+        "lib/tools/_skills.py"
+      ],
+      "note": "_validate_no_symlink_escape / _secure_mkdir vs _within / _safe_member_name"
+    },
+    {
+      "id": "z15",
+      "split": "test",
+      "question": "Kaç farklı sayfalama biçimi destekleniyor ve bir sonraki sayfanın bilgisi nereden okunuyor?",
+      "expect_files": [
+        "pagination.py",
+        "_base_client.py"
+      ],
+      "note": "SyncPage/TokenPage/PageCursor varyantları; BasePage ve PageInfo taban sınıfları"
+    },
+    {
+      "id": "z16",
+      "split": "test",
+      "question": "Eski biçim yanıt sarmalayıcısı ne zaman üretiliyor ve yenisinden nerede ayrılıyor?",
+      "expect_files": [
+        "_legacy_response.py",
+        "_base_client.py"
+      ],
+      "note": "_convert_to_legacy_response; LegacyAPIResponse"
+    },
+    {
+      "id": "z17",
+      "split": "test",
+      "question": "Google Cloud ve Vertex iki ayrı bağlanma yolu sunuyor; kimlik jetonu ve taban adres her birinde nerede çözülüyor?",
+      "expect_files": [
+        "lib/google_cloud/_client.py",
+        "lib/vertex/_client.py"
+      ],
+      "note": "_GoogleCredentialsState + _resolve_deferred_base_url vs BaseVertexClient + _prepare_options"
+    },
+    {
+      "id": "z18",
+      "split": "test",
+      "question": "Olayların birikip tam nesneye dönüşmesi iki ayrı yerde yazılmış; hangisi oturum olayları için, hangisi mesaj akışı için?",
+      "expect_files": [
+        "lib/sessions/_accumulate.py",
+        "lib/streaming/_messages.py"
+      ],
+      "note": "accumulate_managed_agents_event vs accumulate_event"
+    },
+    {
+      "id": "z19",
+      "split": "test",
+      "question": "Dizi biçimindeki sorgu parametreleri URL'e nasıl yazılıyor ve bu biçim nerede seçiliyor?",
+      "expect_files": [
+        "_qs.py",
+        "_client.py",
+        "_base_client.py"
+      ],
+      "note": "Querystring(array_format='brackets') istemcide seçiliyor, _base_client kullanıyor"
+    },
+    {
+      "id": "z20",
+      "split": "test",
+      "question": "Yüklenecek içeriğin gerçek bir dosya mı yoksa base64 metin mi olduğu nerede ayırt ediliyor ve httpx'e nasıl veriliyor?",
+      "expect_files": [
+        "_files.py",
+        "_base_client.py"
+      ],
+      "note": "is_base64_file_input / assert_is_file_content; to_httpx_files _base_client'ta kullanılıyor"
+    },
+    {
+      "id": "z21",
+      "split": "test",
+      "question": "Satır satır JSON dönen bir yanıt nerede çözülüyor ve hangi katman bu çözücüyü seçiyor?",
+      "expect_files": [
+        "_decoders/jsonl.py",
+        "_response.py"
+      ],
+      "note": "JSONLDecoder; _response cast_to'ya bakarak seçiyor"
+    },
+    {
+      "id": "z22",
+      "split": "test",
+      "question": "Kimlik bilgisi yükleri günlüğe yazılırken sırların açığa çıkmaması nasıl sağlanıyor ve bunu kimler kullanıyor?",
+      "expect_files": [
+        "lib/credentials/_secrets.py",
+        "lib/credentials/_providers.py",
+        "lib/credentials/_workload.py"
+      ],
+      "note": "_wrap_secret_fields / _json_dumps_secrets; iki tüketici"
+    },
+    {
+      "id": "z23",
+      "split": "test",
+      "question": "Foundry istemcisinde birbirini dışlayan kimlik doğrulama seçenekleri hangileri ve çakışma nerede yakalanıyor?",
+      "expect_files": [
+        "lib/foundry.py"
+      ],
+      "note": "MutuallyExclusiveAuthError foundry.py:34'te tanımlı ve orada fırlatılıyor. ÖLÇÜM DÜZELTMESİ: _exceptions.py etiketten çıkarıldı — yalnızca taban sınıf AnthropicError'ı barındırıyor, sorunun cevabı değil."
+    },
+    {
+      "id": "z24",
+      "split": "test",
+      "question": "Bir aracın ürettiği çıktı konuşma geçmişine geri konurken hangi biçime çevriliyor ve MCP tipleri buna nasıl uyarlanıyor?",
+      "expect_files": [
+        "lib/tools/_tool_dispatch.py",
+        "lib/tools/mcp.py"
+      ],
+      "note": "tool_result blokları; mcp.py MCP tiplerini SDK tiplerine çeviriyor"
+    },
+    {
+      "id": "z25",
+      "split": "test",
+      "question": "Konuşma çok uzadığında geçmişin kısaltılması hangi ayarla yönetiliyor ve bu ayar akışın neresinde okunuyor?",
+      "expect_files": [
+        "lib/tools/_beta_compaction_control.py",
+        "lib/tools/_beta_runner.py"
+      ],
+      "note": "CompactionControl TypedDict; runner okuyor"
+    },
+    {
+      "id": "z26",
+      "split": "test",
+      "question": "İstemci kapatıldığında altta yatan HTTP bağlantıları ne oluyor ve bu davranış eşzamanlı/eşzamansız sürümlerde nerede tanımlı?",
+      "expect_files": [
+        "_base_client.py",
+        "_client.py"
+      ],
+      "note": "close/__exit__/__aexit__; SyncAPIClient ve AsyncAPIClient"
     }
   ]
 }

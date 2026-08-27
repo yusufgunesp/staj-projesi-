@@ -15,7 +15,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from .languages import EXTENSION_MAP
+from .languages import EXTENSION_MAP, spec_for
 from .languages import extract_from_source as extract_with_grammar
 from .models import Chunk, IndexStats
 
@@ -282,7 +282,7 @@ def index_file(path: Path, root: Path) -> list[Chunk]:
     source = path.read_bytes().decode("utf-8", errors="replace")
     if path.suffix == ".py":
         return extract_from_source(source, rel_path)
-    spec = EXTENSION_MAP.get(path.suffix)
+    spec = spec_for(path.name)
     if spec is None:
         return []
     return extract_with_grammar(source, rel_path, spec)

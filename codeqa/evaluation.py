@@ -91,6 +91,11 @@ class AnswerResult:
     cited_expected: bool  # beklenen dosyalardan en az birine referans verdi mi
     covered: float  # beklenen dosyaların kaçına referans verdi (0..1)
     unverified: int  # doğrulanamayan referans sayısı
+    #: Cevapta referans verilen farklı dosya sayısı. Kapsam metriğinin kontrolü:
+    #: "hepsine referans ver" gibi bir yönerge kapsamı, modele her şeyi
+    #: saydırarak da yükseltebilir. O durumda bu sayı da fırlar — kapsam artışı
+    #: bunun sabit kaldığı yerde gerçek.
+    cited_files: int = 0
     text: str = ""
     tool_calls: int = 0
     usage: dict[str, int] = field(default_factory=dict)
@@ -155,6 +160,16 @@ class Report:
         return sum(a.cited_expected for a in self.answers) / len(self.answers)
 
     @property
+    def citations_per_answer(self) -> float:
+        """Cevap başına ortalama kaç farklı dosyaya referans verildi.
+
+        Kalite ölçütü değil, kapsam metriğinin kontrolü.
+        """
+        if not self.answers:
+            return 0.0
+        return sum(a.cited_files for a in self.answers) / len(self.answers)
+
+    @property
     def file_coverage(self) -> float:
         """Beklenen dosyaların ortalama kaçına referans verildi."""
         if not self.answers:
@@ -180,6 +195,7 @@ class Report:
                 "answer_accuracy": round(self.answer_accuracy, 4),
                 "file_coverage": round(self.file_coverage, 4),
                 "total_unverified": self.total_unverified,
+                "citations_per_answer": round(self.citations_per_answer, 2),
             },
             "retrieval": [vars(r) for r in self.retrieval],
             "answers": [vars(a) for a in self.answers],
@@ -274,6 +290,7 @@ def evaluate_answers(
                 cited_expected=bool(overlap),
                 covered=len(overlap) / len(expected) if expected else 0.0,
                 unverified=len(answer.unverified_citations),
+                cited_files=len(cited),
                 text=answer.text,
                 tool_calls=len(answer.tool_calls),
                 usage=answer.usage,
@@ -319,6 +336,7 @@ def format_report(report: Report, questions: list[Question]) -> str:
         lines.append(f"  doğruluk       : {report.answer_accuracy:.0%}")
         lines.append(f"  dosya kapsamı  : {report.file_coverage:.0%}")
         lines.append(f"  uydurma referans: {report.total_unverified}")
+        lines.append(f"  cevap başına referans: {report.citations_per_answer:.1f} dosya")
 
     failures = [r.question_id for r in report.retrieval if not r.found]
     if failures:

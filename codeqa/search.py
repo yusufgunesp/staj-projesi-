@@ -91,6 +91,28 @@ DIRECTORY_TRIGGER = 2
 #: aradaki 135 sonuç gürültü. Import bağını doğrudan takip etmek gerekiyor.
 REFERENCE_SLOTS = 2
 
+#: İleri yönün ayrı bütçesi. **Ölçüldü ve genellenmedi, varsayılan kapalı.**
+#:
+#: Dev bölmesindeki `z08` şu yüzden kaçıyordu: `lib/middleware/_fallbacks.py`
+#: 1. sıradaydı ve aranan `_middleware.py`'yi import ediyordu, ama genişletme
+#: yalnızca "kimler kullanıyor" yönünde çalışıyordu. İleri yön eklendi
+#: (yeniden dışa aktarım kabukları elenip, hub'lar atlanıp, kalanlar sorguya
+#: yakınlığa göre sıralanarak) ve dev kapsamı 0.944 → 1.000 oldu.
+#:
+#: Test bölmesinde kazanç **tam olarak sıfır**: kapsam 0.893 → 0.893, MRR
+#: 0.847 → 0.847, buna karşılık soru başına 2 parça daha. Dev'in hatalarına
+#: bakarak tasarlanan bir mekanizmanın o hataları düzeltmesi sürpriz değil;
+#: ölçüm başka bir sette yapılmasaydı kazanç sanılacaktı.
+#:
+#: Açmak için `HybridSearch(..., reference_forward_slots=2)`.
+REFERENCE_FORWARD_SLOTS = 0
+
+#: İleri yönde ("bu dosya neyi kullanıyor") hub eşiği. Geri yöndekinden gevşek,
+#: çünkü iki yön simetrik değil: 13 dosya tarafından kullanılmak hub olmak
+#: demektir, 13 dosyayı kullanmak sıradan bir modül demektir. Bu SDK'da
+#: dosyaların yalnızca ~10'unun 25'ten çok kullanıcısı var.
+REFERENCE_HUB_USERS = 25
+
 #: Bir dosyanın kullanıcıları bu sayıdan fazlaysa import bağı ayırt edici değil.
 #: Bu SDK'da `_models.py`'nin 513, `_types.py`'nin 100 kullanıcısı var — onları
 #: genişletmek her soruya aynı dosyaları eklemek demek. Buna karşılık dosyaların
@@ -130,15 +152,56 @@ _RELATIVE_IMPORT = re.compile(r"^from (\.+)([\w.]*) import", re.MULTILINE)
 TYPE_ONLY_WEIGHT = 0.4
 
 
+#: Yalnızca başka bir ada takma ad veren atama: `MessageStreamEvent = RawMessageStreamEvent`.
+#: Sağ taraf çıplak bir ad (ya da nitelenmiş ad) ise yeniden dışa aktarımdır;
+#: `DEFAULT_MAX_RETRIES = 2` gibi gerçek bir değer değildir.
+_REEXPORT_ASSIGNMENT = re.compile(r"^\w+(\s*:[^=]+)?\s*=\s*[A-Za-z_][\w.]*\s*$")
+_IGNORED_LINE = re.compile(r"^\s*(import |from |__all__\s*=|#|\"\"\"|$)")
+
+
+#: Yeniden dışa aktarım kabuklarının geri plana atılması. **Ölçüldü ve
+#: genellenmedi, varsayılan kapalı.** Dev bölmesinde MRR 0.694 → 0.736; test
+#: bölmesinde 0.847 → 0.847, yani hiç. Fikir doğru görünüyor (kural, metotsuz
+#: sınıflar için zaten uygulanan kuralın modül karşılığı) ve maliyeti yok, ama
+#: ölçülmüş faydası da yok.
+DEMOTE_REEXPORT_MODULES = False
+
+
+def is_reexport_module(text: str) -> bool:
+    """Modül parçası hiçbir çalışma zamanı değeri taşımıyor mu?
+
+    "Metotsuz sınıf, alan listesinden ibarettir" kuralının modül karşılığı.
+    `types/message_stream_event.py` import + `__all__` + tek bir takma addan
+    ibaret; `_constants.py` ise `DEFAULT_MAX_RETRIES = 2` gibi gerçek değerler
+    taşıyor ve "varsayılan zaman aşımı kaç" sorusunun cevabı orada.
+
+    Ayrımı dosya yoluna göre yapmak yanlış olurdu: bu SDK'da dosyaların %92'si
+    "generated" işaretli, gerçek cevapları taşıyanlar dahil.
+    """
+    if "def " in text or "class " in text:
+        return False
+    for line in text.splitlines():
+        if _IGNORED_LINE.match(line):
+            continue
+        if not _REEXPORT_ASSIGNMENT.match(line.strip()):
+            return False
+    return True
+
+
 def chunk_weight(record: dict) -> float:
     """Parçanın bilgi yoğunluğuna göre ağırlık.
 
-    Metot içermeyen bir sınıf parçası, alan listesinden ibaret demektir.
+    İki biçim geri plana atılıyor: metot içermeyen sınıf parçası (alan listesi)
+    ve hiçbir değer taşımayan modül parçası (yeniden dışa aktarım kabuğu).
     `def` geçip geçmediğine bakmak, üretilmiş dosya işaretine bakmaktan
     sağlam: bu SDK'da dosyaların %92'si "generated" işaretli, `_client.py`
     ve `_constants.py` dahil — yani o işaret ayırt edici değil.
     """
-    if record.get("kind") == "class" and "def " not in record.get("text", ""):
+    text = record.get("text", "")
+    kind = record.get("kind")
+    if kind == "class" and "def " not in text:
+        return TYPE_ONLY_WEIGHT
+    if kind == "module" and DEMOTE_REEXPORT_MODULES and is_reexport_module(text):
         return TYPE_ONLY_WEIGHT
     return 1.0
 
@@ -210,14 +273,29 @@ def _resolve_relative_import(importer: str, level: int, module: str | None) -> s
     return "/".join(parts) + ".py"
 
 
-def build_import_graph(records: list[dict]) -> dict[str, set[str]]:
-    """Hangi dosyanın hangi dosyalar tarafından kullanıldığını çıkarır.
+@dataclass
+class ImportGraph:
+    """İki yönlü import bağı.
+
+    Yön ayrımı önemli: `users` "bu dosyayı kimler kullanıyor", `imports` ise
+    "bu dosya neyi kullanıyor". İkisi farklı soruları çözüyor — birincisi
+    "şu yardımcıyı kimler çağırıyor", ikincisi "şu akışın dayandığı tanımlar
+    nerede".
+    """
+
+    users: dict[str, set[str]]
+    imports: dict[str, set[str]]
+
+
+def build_import_graph(records: list[dict]) -> ImportGraph:
+    """İmport bağını iki yönde birden çıkarır.
 
     Kaynak, modül parçalarının metnindeki import satırları — indeksleme sırasında
     zaten toplanıyorlar, ayrıca bir tarama gerekmiyor.
     """
     modules = {r["path"] for r in records if r["kind"] == "module"}
     users: dict[str, set[str]] = {}
+    imports: dict[str, set[str]] = {}
     for record in records:
         if record["kind"] != "module":
             continue
@@ -226,43 +304,86 @@ def build_import_graph(records: list[dict]) -> dict[str, set[str]]:
             target = _resolve_relative_import(importer, len(level), module or None)
             if target in modules and target != importer:
                 users.setdefault(target, set()).add(importer)
-    return users
+                imports.setdefault(importer, set()).add(target)
+    return ImportGraph(users=users, imports=imports)
 
 
 def extend_with_referencing_files(
     records: list[dict],
-    importers: dict[str, set[str]],
+    graph: ImportGraph,
     selected: list,
     path_of,
     slots: int,
+    forward_slots: int = REFERENCE_FORWARD_SLOTS,
     max_users: int = REFERENCE_MAX_USERS,
+    rank_key=None,
 ) -> list:
-    """Seçimdeki dosyaları kullanan dosyaların modül parçasını ekler.
+    """İmport bağıyla bağlı dosyaların modül parçasını ekler, iki yönde.
 
     Diğer iki genişletmeden farkı, sıralamaya hiç bakmaması: eklenen dosya aday
     havuzunda olmayabilir, çoğu zaman değil de. Bu yüzden dosyanın modül parçası
     ekleniyor — import'ları ve genel görünümü taşıyan parça.
+
+    Önce geri yön ("kimler kullanıyor"), sonra ileri yön ("neyi kullanıyor").
+    İki yön farklı işliyor, çünkü simetrik değiller:
+
+    - **Geri yön** kendi başına seçici. Az kullanıcılı bir dosyayı çağıran yerler
+      o dosyanın varlık sebebini anlatıyor; hepsi eklenebilir.
+    - **İleri yön** gürültülü: sıradan bir modül on küsur şey import eder ve
+      çoğu (`_models.py`, `_base_client.py`) her dosyada geçer. Burada üç eleme
+      var — değer taşımayan yeniden dışa aktarım kabukları atlanıyor, çok
+      kullanıcılı hub'lar atlanıyor, kalanlar sorguya yakınlığa göre sıralanıyor.
+      İmport bağı adayları 4311'den bir avuca indiriyor, benzerlik o avucun
+      içinde seçiyor.
     """
-    if slots <= 0:
+    if slots <= 0 and forward_slots <= 0:
         return selected
 
     modules = {r["path"]: r for r in records if r["kind"] == "module"}
     seen = {path_of(item) for item in selected}
-    added = 0
+    budget = [slots]
+
+    def add(path: str) -> None:
+        seen.add(path)
+        selected.append(SearchHit(record=modules[path], score=0.0, sources=("reference",)))
+        budget[0] -= 1
+
+    def usable(path: str) -> bool:
+        return path not in seen and path in modules
+
+    # Geri yön: kimler kullanıyor.
     for item in list(selected):
-        if added >= slots:
+        if budget[0] <= 0:
             break
-        users = importers.get(path_of(item), set())
-        # Çok kullanıcılı dosyalar (hub) ayırt edici değil: her soruya aynı
-        # dosyaları eklerler.
+        users = graph.users.get(path_of(item), set())
         if not users or len(users) > max_users:
             continue
-        for user in sorted(users):
-            if added >= slots or user in seen or user not in modules:
+        for path in sorted(users):
+            if budget[0] <= 0:
+                break
+            if usable(path):
+                add(path)
+
+    if forward_slots <= 0 or rank_key is None:
+        return selected
+    budget[0] = forward_slots
+
+    # İleri yön: neyi kullanıyor.
+    candidates: set[str] = set()
+    for item in list(selected):
+        for path in graph.imports.get(path_of(item), set()):
+            if not usable(path):
                 continue
-            seen.add(user)
-            selected.append(SearchHit(record=modules[user], score=0.0, sources=("reference",)))
-            added += 1
+            if len(graph.users.get(path, ())) > REFERENCE_HUB_USERS:
+                continue
+            if is_reexport_module(modules[path]["text"]):
+                continue
+            candidates.add(path)
+    for path in sorted(candidates, key=lambda p: -rank_key(modules[p])):
+        if budget[0] <= 0:
+            break
+        if usable(path):
+            add(path)
     return selected
 
 
@@ -370,6 +491,7 @@ class HybridSearch:
         diversity_slots: int = DIVERSITY_SLOTS,
         directory_slots: int = DIRECTORY_SLOTS,
         reference_slots: int = REFERENCE_SLOTS,
+        reference_forward_slots: int = REFERENCE_FORWARD_SLOTS,
     ):
         self.records = records
         self.bm25 = BM25Search(records)
@@ -381,9 +503,10 @@ class HybridSearch:
         self.diversity_slots = diversity_slots
         self.directory_slots = directory_slots
         self.reference_slots = reference_slots
+        self.reference_forward_slots = reference_forward_slots
         # İmport grafiği ilk ihtiyaçta kuruluyor: kurulumu ucuz ama referans
         # genişletmesi kapalıysa hiç gerekmiyor.
-        self._importers: dict[str, set[str]] | None = None
+        self._import_graph: ImportGraph | None = None
 
     def _candidates(self, query: str, pool: int, mode: str):
         if mode == "bm25":
@@ -449,9 +572,27 @@ class HybridSearch:
                 for index, score, sources in candidates
             ]
 
-        return self._expand(ranked, k)
+        return self._expand(ranked, k, query)
 
-    def _expand(self, ranked: list[SearchHit], k: int) -> list[SearchHit]:
+    def _rank_key(self, query: str):
+        """İmport komşuluğundaki adayları sorguya yakınlığa göre sıralar.
+
+        Adaylar aday havuzunda olmayabildiği için sıralama bilgileri yok; tek
+        elde kalan sinyal vektör benzerliği. Sorgu vektörü zaten önbellekte.
+        """
+        try:
+            query_vector = self.vector.embedder.embed_query(query)
+        except Exception:
+            return None
+        by_hash = {r["content_hash"]: i for i, r in enumerate(self.records)}
+
+        def score(record: dict) -> float:
+            index = by_hash.get(record["content_hash"])
+            return float(self.vector.vectors[index] @ query_vector) if index is not None else 0.0
+
+        return score
+
+    def _expand(self, ranked: list[SearchHit], k: int, query: str) -> list[SearchHit]:
         """Alaka sırasının arkasına üç ayrı eksende ekleme yapar.
 
         Üçü de eleme yapmıyor, yalnızca ekliyor — sert kota denendiğinde ilk k
@@ -469,10 +610,16 @@ class HybridSearch:
         selected = extend_with_sibling_files(
             ranked, path_of, selected, self.directory_slots, DIVERSITY_SCAN
         )
-        if self.reference_slots > 0:
-            if self._importers is None:
-                self._importers = build_import_graph(self.records)
+        if self.reference_slots > 0 or self.reference_forward_slots > 0:
+            if self._import_graph is None:
+                self._import_graph = build_import_graph(self.records)
             selected = extend_with_referencing_files(
-                self.records, self._importers, selected, path_of, self.reference_slots
+                self.records,
+                self._import_graph,
+                selected,
+                path_of,
+                self.reference_slots,
+                forward_slots=self.reference_forward_slots,
+                rank_key=self._rank_key(query),
             )
         return selected
