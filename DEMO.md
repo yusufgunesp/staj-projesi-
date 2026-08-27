@@ -21,6 +21,13 @@ Fallback'in de hazır olduğundan emin ol (yerel, ücretsiz, yarım saniye):
 .venv/bin/python -m codeqa embed -i data/anthropic.jsonl --provider hash
 ```
 
+**Krediyi kontrol et.** Canlı soru Anthropic API'sine gidiyor; bakiye biterse 400 döner ve
+demo orada durur. Tek satırlık kontrol (bir kuruşun altında):
+
+```bash
+.venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); import anthropic; print('kredi OK' if anthropic.Anthropic().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
+```
+
 Terminali büyüt, yazı tipini büyüt. Tarayıcıda `README.md` açık dursun — soru gelirse
 oradan ölçüm tablolarını gösterirsin.
 
@@ -114,7 +121,9 @@ raporlanacaktı.
 > çalışıyor, yani geliştirici zaten kullandığı yerden — Claude Code'un içinden —
 > soruyor."
 
-Claude Code açıksa canlı sor. Değilse yapılandırmayı göster:
+Claude Code açıksa canlı sor. Değilse yapılandırmayı göster — sunucunun konuştuğu
+protokol düzeyinde doğrulandı (`initialize` → `tools/list` → `tools/call`, üç araç da
+yanıt veriyor):
 
 ```json
 {
