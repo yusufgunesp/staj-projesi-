@@ -162,3 +162,93 @@ def test_broken_source_does_not_crash(tmp_path):
     chunks, stats = index_repo(tmp_path)
     assert stats.files_failed == 0
     assert isinstance(chunks, list)
+
+
+GO_DOC_SOURCE = """package main
+
+// registerMetrics kayıt defterine metrikleri ekler.
+// İkinci satır da aynı bloğa ait.
+func registerMetrics(r Registerer) {
+	r.MustRegister(m)
+}
+
+// Bu yorum aşağıdaki fonksiyona ait DEĞİL, arada boş satır var.
+
+func detached() int {
+	return 1
+}
+
+func undocumented() bool {
+	return true
+}
+"""
+
+
+def test_go_doc_comment_is_captured():
+    """Go'da dokümantasyon bildirimin üstünde; düğüm metni onu içermiyordu."""
+    chunks = extract_from_source(GO_DOC_SOURCE, "main.go", spec_for("main.go"))
+    fn = next(c for c in chunks if c.name == "registerMetrics")
+    assert "kayıt defterine metrikleri ekler" in fn.text
+    assert "İkinci satır da aynı bloğa ait" in fn.text
+    assert fn.docstring is not None
+
+
+def test_doc_comment_span_covers_the_comment():
+    """Satır aralığı metnin geldiği yeri göstermeli, yoksa referans yalan söyler."""
+    chunks = extract_from_source(GO_DOC_SOURCE, "main.go", spec_for("main.go"))
+    fn = next(c for c in chunks if c.name == "registerMetrics")
+    assert fn.start_line == 3  # `func` 5. satırda, yorum 3'te başlıyor
+
+
+def test_detached_comment_is_not_attached():
+    """Arada boş satır varsa yorum o bildirime ait değil."""
+    chunks = extract_from_source(GO_DOC_SOURCE, "main.go", spec_for("main.go"))
+    fn = next(c for c in chunks if c.name == "detached")
+    assert "aşağıdaki fonksiyona ait DEĞİL" not in fn.text
+    assert fn.docstring is None
+
+
+def test_undocumented_function_has_no_docstring():
+    chunks = extract_from_source(GO_DOC_SOURCE, "main.go", spec_for("main.go"))
+    fn = next(c for c in chunks if c.name == "undocumented")
+    assert fn.docstring is None
+    assert fn.text.startswith("func undocumented")
+
+
+_YORUM = "// topla iki sayıyı toplar."
+_GOVDE = "return a + b;"
+DOC_ORNEKLERI = {
+    "main.go": (f"{_YORUM}\nfunc topla(a int, b int) int {{\n\treturn a + b\n}}\n", "topla"),
+    "main.c": (
+        f"/* topla iki sayıyı toplar. */\nint topla(int a, int b) {{\n    {_GOVDE}\n}}\n",
+        "topla",
+    ),
+    "main.cpp": (f"{_YORUM}\nint topla(int a, int b) {{\n    {_GOVDE}\n}}\n", "topla"),
+    "Main.java": (
+        f"class M {{\n  {_YORUM}\n  int topla(int a, int b) {{ {_GOVDE} }}\n}}\n",
+        "M.topla",
+    ),
+    "main.cs": (
+        f"class M {{\n  {_YORUM}\n  int Topla(int a, int b) {{ {_GOVDE} }}\n}}\n",
+        "M.Topla",
+    ),
+    "main.ts": (
+        f"{_YORUM}\nfunction topla(a: number, b: number): number {{ {_GOVDE} }}\n",
+        "topla",
+    ),
+    "main.js": (f"{_YORUM}\nfunction topla(a, b) {{ {_GOVDE} }}\n", "topla"),
+}
+
+
+@pytest.mark.parametrize("dosya", sorted(DOC_ORNEKLERI))
+def test_doc_comment_captured_in_every_language(dosya):
+    """Yedi dilin hepsinde dokümantasyon bildirimin üstünde duruyor.
+
+    Python `ast` yolunu kullandığı için bu düzeltmeden etkilenmiyor; tree-sitter
+    ile ayrıştırılan yedi dilin hepsi etkileniyordu.
+    """
+    kaynak, ad = DOC_ORNEKLERI[dosya]
+    chunks = extract_from_source(kaynak, dosya, spec_for(dosya))
+    hedef = next(c for c in chunks if c.name == ad)
+    assert hedef.docstring is not None, f"{dosya}: yorum yakalanmadı"
+    assert "toplar" in hedef.text

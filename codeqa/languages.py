@@ -181,6 +181,38 @@ def _text(node, source: bytes) -> str:
     return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
+def _doc_comment(node, source: bytes) -> tuple[str, int] | None:
+    """Bildirimin hemen üstündeki bitişik yorum bloğunu döndürür.
+
+    Python'da dokümantasyon gövdenin *içinde* (docstring), ama Go, C, C++, Java,
+    C#, TypeScript ve JavaScript'te bildirimin *üstünde* duruyor:
+
+        // registerFederationMetrics federasyon metriklerini kaydeder.
+        func registerFederationMetrics(r prometheus.Registerer) {
+
+    Düğümün metni `func`'tan başladığı için bu yorumlar indekse hiç girmiyordu.
+    Ölçülen kayıp: Prometheus'ta incelenen 1500 Go fonksiyonunun 607'sinin
+    üstünde yorum var ve **hiçbiri** parçaya girmiyordu.
+
+    "Bitişik" olması şart: arada boş satır varsa yorum o bildirime ait değil,
+    dosyanın başka bir bölümüne aittir. Yalnızca doğrudan üstteki satırdan
+    başlayan kesintisiz blok alınıyor.
+    """
+    satirlar: list[str] = []
+    beklenen = node.start_point[0]
+    onceki = node.prev_named_sibling
+    while onceki is not None and onceki.type.endswith("comment"):
+        # Yorum, beklenen satırda bitmiyorsa arada boşluk var: bağ kopmuş.
+        if onceki.end_point[0] != beklenen - 1:
+            break
+        satirlar.insert(0, _text(onceki, source))
+        beklenen = onceki.start_point[0]
+        onceki = onceki.prev_named_sibling
+    if not satirlar:
+        return None
+    return "\n".join(satirlar), beklenen + 1
+
+
 def _name_of(node, source: bytes) -> str:
     """Düğümün adını çıkarır.
 
@@ -288,17 +320,28 @@ def extract_from_source(source_text: str, rel_path: str, spec: LanguageSpec) -> 
         return f"{rel_path} > {name} ({kind}) [{spec.name}]"
 
     def add(node, name: str, kind: str, text: str, parent: str | None) -> None:
+        start_line = node.start_point[0] + 1
+        docstring = None
+        belge = _doc_comment(node, source)
+        if belge:
+            yorum, yorum_satiri = belge
+            # Yorum metnin başına ekleniyor ve satır aralığı ona kadar
+            # genişletiliyor: aralık her zaman metnin geldiği yeri göstermeli.
+            text = f"{yorum}\n{text}"
+            start_line = yorum_satiri
+            docstring = yorum
         chunks.append(
             Chunk(
                 source="code",
                 kind=kind,
                 path=rel_path,
                 name=name,
-                start_line=node.start_point[0] + 1,
+                start_line=start_line,
                 end_line=node.end_point[0] + 1,
                 text=text,
                 context=context(name, kind),
                 signature=_signature(node, source) or None,
+                docstring=docstring,
                 parent=parent,
                 language=spec.name,
             )

@@ -52,7 +52,7 @@ Kullanılan kod tabanı: **Anthropic'in kendi Python SDK'sı, 1097 kod dosyası.
 görmediği, üçüncü taraf bir repo. (`stats` komutu 1099 diyor — ikisi markdown dokümanı.)
 
 ```bash
-.venv/bin/python -m codeqa ask "bir istek 429 alırsa kaç kez ve ne kadar beklenerek yeniden deneniyor?" -i data/anthropic.jsonl --provider voyage --mode vector --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
+.venv/bin/python -m codeqa ask "bir istek 429 alırsa kaç kez ve ne kadar beklenerek yeniden deneniyor?" -i data/anthropic.jsonl --provider voyage --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
 ```
 
 **Süre: ~6 saniye.** Cevap `_constants.py:3`, `_base_client.py:818` gibi referanslar içerir.
@@ -75,7 +75,7 @@ Bu an demonun en ikna edici anı. Acele etme.
 > "Bir aracın doğru cevap verdiğini nasıl bilirsin? Ben de bilmiyordum, o yüzden ölçtüm."
 
 ```bash
-.venv/bin/python -m codeqa eval -q eval/questions_zor.json -i data/anthropic.jsonl --provider voyage --mode vector --split test -k 8 --label demo
+.venv/bin/python -m codeqa eval -q eval/questions_zor.json -i data/anthropic.jsonl --provider voyage --split test -k 8 --label demo
 ```
 
 **Süre: yarım saniye, ücretsiz.** Çıktı: recall %100, kapsam %93, MRR 0.847.
@@ -181,6 +181,7 @@ seçeneğin kalite maliyeti ölçüldü. Cevap, varsayılan yapılandırmayı be
 |-------|--------|
 | `ask` yavaş ya da hata veriyor | `search` komutuna geç — ücretsiz, yarım saniye, referansları yine gösterir |
 | API anahtarı çalışmıyor | `--provider hash --mode bm25` ile devam et ve **İngilizce anahtar kelime** ya da sembol adı ara (`retry timeout calculate`). Anahtar kelime araması çalışır, anlamsal arama yapılmaz — Türkçe doğal dille sonuç alamazsın, sebebi README'deki dil farkı bulgusu |
+| "Neden `--mode` yazmıyorsun?" | Yazmaya gerek yok: mod sağlayıcıdan çözülüyor (`voyage` → vector, `hash` → hybrid). Eskiden elle vermek gerekiyordu, düzeltildi |
 | İnternet yok | `codeqa grep` ve `codeqa stats` tamamen yerel; ölçüm çıktıları `runs/` altında hazır |
 | Soru gelir, cevabı bilmiyorsun | "Ölçmedim" demek bu projede geçerli bir cevap — raporun tamamı bunun üzerine kurulu |
 
