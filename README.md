@@ -13,8 +13,9 @@ Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 ```
 
 **Ölçülen sonuç:** `anthropic` Python SDK'sında (1097 dosya, üç soru seti) en zor setin
-dokunulmamış test bölmesinde **cevap doğruluğu %100, dosya kapsamı %93**; uydurma referans hiçbir
-koşuda görülmedi.
+dokunulmamış test bölmesinde **cevap doğruluğu %100, dosya kapsamı %93**. Bugüne kadarki bütün
+cevap koşularında toplam **bir** uydurma referans görüldü ve doğrulama katmanı onu yakaladı
+(bkz. [Cevaplama](#cevaplama)).
 
 **Araç yalnızca Python indeksliyor.** Bir dönem sekiz dil destekleniyordu; ikinci bir dilde
 ölçüldüğünde sonuç belirgin şekilde düştüğü için kaldırıldı — ayrıntı
@@ -179,7 +180,12 @@ Bulunan parçalar bağlam olarak modele veriliyor; model eksik kalanı iki tool'
 dışarı çıkma denemesi reddediliyor, testlerle sabit.
 
 **Referanslar doğrulanıyor.** Model var olmayan bir `dosya:satır` uydurabilir. Her referans dosya
-ve satır sınırına göre kontrol ediliyor, tutmayanlar işaretleniyor. Kısaltılmış yollar
+ve satır sınırına göre kontrol ediliyor, tutmayanlar işaretleniyor.
+
+Bütün cevap koşularında bir kez gerçekleşti ve türü öğreticiydi: model
+`türler/beta/beta_fallback_credit_not_applied.py:13` yazdı — **dizin adını Türkçeye çevirdi**,
+gerçek yol `types/beta/...`. Soruların Türkçe olmasının yan etkisi; doğrulama katmanı olmasaydı
+cevap doğru görünecekti. Katmanın varlık sebebi tam olarak bu. Kısaltılmış yollar
 (`models.py` → `codeqa/models.py`) indekste tek eşleşme varsa kabul ediliyor; birden fazla
 eşleşme varsa cevabın kendi içinde tam yazılmış yollar bağlam olarak kullanılıyor.
 
