@@ -17,8 +17,9 @@ dokunulmamış test bölmesinde **cevap doğruluğu %100, dosya kapsamı %93**; 
 koşuda görülmedi.
 
 **Ama ikinci bir kod tabanında sayılar taşınmadı.** Prometheus'ta (Go, 453 kod dosyası) kapsam
-%67, MRR 0.406. Bu, projenin en önemli tek bulgusu: bir repoda ölçülen başarım başka bir repoyu
-öngörmüyor. Ayrıntı [Sonuçlar](#sonuçlar) bölümünde.
+%79, MRR 0.674 — Python'daki %93 ve 0.847'nin belirgin şekilde altında. Bir repoda ölçülen
+başarım başka bir repoyu öngörmüyor; bu araç bir müşteri projesinde kullanılacaksa **o projede
+ayrıca ölçülmeli.** Ayrıntı [Sonuçlar](#sonuçlar) bölümünde.
 
 ## İçindekiler
 
@@ -73,10 +74,13 @@ Diğer komutlar:
 **Desteklenen diller:** Python, C, C++, Java, C#, Go, TypeScript, JavaScript. Python yerleşik
 `ast` ile, diğerleri tree-sitter grameriyle ayrıştırılıyor.
 
-> ⚠️ **Doğruluk yalnızca Python üzerinde ölçüldü.** Diğer diller için sembol çıkarma birim
-> testlerle doğrulandı (her dil için sınıf, metot, fonksiyon, import ve satır aralıkları), ama
-> uçtan uca arama/cevap doğruluğu ölçülmedi. "Java'da da %100 doğru" demek için o dilde bir soru
-> seti hazırlanması gerekiyor.
+> ⚠️ **Go ölçüldü ve Python'dan kötü çıktı: kapsam %93 yerine %79.** Farkın bir kısmı indeks
+> bileşiminden geliyordu (doküman parçaları kod sonuçlarını bastırıyor — `--no-docs` ile
+> ölçülmeli), kalanının sebebi bilinmiyor.
+> Kalan altı dil (C, C++, Java, C#, TypeScript, JavaScript) için yalnızca sembol çıkarma birim
+> testlerle doğrulandı; uçtan uca doğruluk ölçülmedi. Bu araç bir müşteri projesinde
+> kullanılacaksa, **o projenin dilinde ve kod tabanında ayrıca ölçülmesi gerekiyor** — iki
+> kod tabanının sonucu birbirini öngörmedi.
 
 **Embedding sağlayıcıları:** `voyage` (bulut, en iyi sonuç), `ollama` (local, kod dışarı çıkmaz),
 `hash` (anahtarsız yer tutucu — anlamsal arama **yapmaz**, sadece boru hattını denemek için).
@@ -302,30 +306,55 @@ Son üç satırda MRR'ın recall'la aynı yöne gitmediğine dikkat: docstring'l
 Zenginleşen tip parçaları vektör aramasında daha rekabetçi hâle geliyor; ağırlıklandırma onu
 dengeliyor. İkisi birlikte her iki metrikte de başlangıcın üstünde.
 
-**İkinci kod tabanı: Prometheus (Go, 453 kod dosyası, 15.197 parça)**
+**İkinci kod tabanı: Prometheus (Go, 453 kod dosyası)**
 
 Bütün ölçümler tek repodan geliyordu. İkinci bir kod tabanı eklendi — farklı dil, farklı alan
-(zaman serisi veritabanı), 3,5 kat daha büyük indeks. 24 soru, dev/test ayrımı baştan kurulu.
+(zaman serisi veritabanı), daha büyük indeks. 24 soru, dev/test ayrımı baştan kurulu.
 
-| Set | recall@8 | kapsam | MRR |
-|-----|----------|--------|-----|
-| anthropic SDK (Python), zor-test | 100% | **93%** | **0.847** |
-| Prometheus (Go), dev (12) | 83% | 67% | 0.497 |
-| **Prometheus (Go), test (12)** | **92%** | **67%** | **0.406** |
-| Prometheus, CHANGELOG türevi (6) | 83% | 75% | 0.512 |
+İlk karşılaştırma **adil değildi** ve bunu ancak sebebi ararken fark ettim. İki indeksin bileşimi
+çok farklı:
 
-**Sayılar taşınmadı.** Kapsam %93'ten %67'ye, MRR 0.847'den 0.406'ya düşüyor. Bu, projenin en
-önemli tek bulgusu olabilir: bir kod tabanında ölçülen başarım başka bir kod tabanını
-öngörmüyor. Aracın "müşteri projesine adapte olma süresini kısaltır" iddiası, ölçüldüğü tek
-repoda geçerli; ikinci repoda belirgin şekilde zayıf.
+| İndeks | Toplam parça | Doküman | Test dosyası |
+|--------|--------------|---------|--------------|
+| anthropic (Python) | 4.311 | %0 | %0 |
+| Prometheus (Go) | 15.197 | %15 | %36 |
 
-Örneklem küçük olduğu için tek tek sayılar da güvenilmez: n=12'de bir soru 8 puan ediyor ve
-güven aralıkları ±25 puan bandında. Ama Python ve Go arasındaki 26 puanlık kapsam farkı bu
-bandın dışında.
+anthropic SDK'sı site-packages'tan kurulu olduğu için testler ve dokümanlar paketlenmiyor;
+Prometheus depo kökünden indekslendiği için **indeksin %51'i üretim kodu değil.** İkisini
+eşdeğermiş gibi karşılaştırmak, aracı Go'da olduğundan kötü göstermek demekti.
+
+| Set (test bölmesi) | recall@8 | kapsam | MRR |
+|--------------------|----------|--------|-----|
+| anthropic SDK (Python), zor | 100% | **93%** | **0.847** |
+| Prometheus (Go), ham indeks | 92% | 67% | 0.406 |
+| **Prometheus (Go), yalnızca kod** | **100%** | **79%** | **0.674** |
+
+Adil karşılaştırmada fark yarı yarıya küçülüyor: kapsamda 26 puan yerine 14, MRR'da 0.44 yerine
+0.17. **Ama fark hâlâ duruyor** ve sebebi bilinmiyor — kalan adaylar indeks boyutu (8.776 vs
+4.311 parça), alanın yapısı ve soru zorluğu.
+
+**Baskın gürültü kaynağı markdown, test dosyaları değil**
+
+| İndeks bileşimi | test kapsam | test MRR |
+|-----------------|-------------|----------|
+| Tam | 67% | 0.406 |
+| Markdown çıkarılmış | 71% | 0.586 |
+| Test dosyaları çıkarılmış | 67% | 0.421 |
+| İkisi de çıkarılmış | **79%** | **0.674** |
+
+Markdown tek başına MRR'ı 0.18 yükseltiyor, test dosyaları neredeyse hiçbir şey yapmıyor.
+Mekanizma anlaşılır: sorular Türkçe doğal dilde, markdown da düz metin — birbirlerine benziyorlar.
+Ama cevaplar kodda. Doküman parçaları indeksin %15'iyken sonuçların %28'ini kaplıyor, iki kat
+fazla temsil ediliyor.
+
+Pratik sonuç: **kod sorusu soruluyorsa doküman indekslenmemeli** (`codeqa index --no-docs`).
+Varsayılan değiştirilmedi, çünkü bu bulguyu ararken test bölmesinin sayılarına bakıldı; ayarı
+şimdi ona göre değiştirmek, ölçülen sette ayar yapmak olur. Üçüncü bir kod tabanında
+doğrulanmalı.
 
 **Yol boyunca bulunan hata — ve düzeltilmesinin işe yaramaması**
 
-Farkın sebebini ararken gerçek bir kusur çıktı: Python'da dokümantasyon gövdenin *içinde*
+Farkın sebebini ararken ayrı bir kusur da çıktı: Python'da dokümantasyon gövdenin *içinde*
 (docstring), ama Go, C, C++, Java, C#, TypeScript ve JavaScript'te bildirimin **üstünde** duruyor.
 Parça metni bildirimden başladığı için bu yorumlar indekse hiç girmiyordu.
 
@@ -335,9 +364,8 @@ yedisinde dokümantasyonu görmüyordu. Tek kod tabanıyla ölçüldüğü süre
 Python o yolu kullanmıyor.
 
 Düzeltildi (Go'da docstring taşıyan parça oranı %0 → %36, satır aralıkları hâlâ doğru) ve
-**getirme hiç kıpırdamadı** — yukarıdaki tablo düzeltmeden sonraki hâli. Düzeltme yine de
-tutuldu, ama gerekçesi ölçüm değil doğruluk: var olan dokümantasyonu indekslememek zaten yanlıştı.
-Bu sette faydası ölçülemedi; başka bir sette ölçülebilir.
+**getirme hiç kıpırdamadı.** Düzeltme yine de tutuldu, ama gerekçesi ölçüm değil doğruluk: var
+olan dokümantasyonu indekslememek zaten yanlıştı.
 
 **Embedding sağlayıcıları (60 soru, hibrit):**
 
@@ -541,20 +569,24 @@ data/, runs/     üretilen çıktılar (git'e girmez)
 
 ## Sıradaki adımlar
 
-1. **Go açığının sebebini bulmak.** Kapsam Python'da %93, Go'da %67. İlk şüpheli olan
-   dokümantasyon kaybı düzeltildi ve hiçbir şey değişmedi, yani sebep başka. Sıradaki adaylar:
-   indeks boyutu (15.197 parça vs 4.311 — üç buçuk kat daha çok rekabet), soru zorluğu ve alanın
-   yapısı. Bunu bilmeden aracın hangi müşteri projelerinde işe yarayacağı söylenemez.
+1. **Doküman ağırlıklandırmasını üçüncü bir kod tabanında doğrulamak.** Doküman parçalarının kod
+   sonuçlarını bastırdığı ölçüldü (markdown indeksin %15'i ama sonuçların %28'i; çıkarılınca MRR
+   0.406 → 0.586). Ama bu bulgu test bölmesinin sayılarına bakılarak elde edildi, dolayısıyla
+   varsayılanı ona göre değiştirmek ölçülen sette ayar yapmak olur. Temiz bir sette
+   doğrulanmalı — ya doküman parçalarına ağırlık verilerek ya da `--no-docs` varsayılan yapılarak.
 
-2. **Zor setin test bölmesi büyütülmeli.** Şu an 14 soru; bir soru ~3.5 puan ediyor, yani tek bir
+2. **Kalan Go açığının sebebini bulmak.** Bileşim düzeltildikten sonra bile kapsam %93'e karşı
+   %79. Kalan adaylar: indeks boyutu (8.776 vs 4.311 parça), alanın yapısı, soru zorluğu.
+
+3. **Zor setin test bölmesi büyütülmeli.** Şu an 14 soru; bir soru ~3.5 puan ediyor, yani tek bir
    soruluk oynama gürültü seviyesinde. Ayrıca her yeni deneme test'ten soru harcıyor (aşağıya
    bakın) — bölme bir bütçe ve şu an dar.
 
-3. **Üçüncü bir kod tabanı.** İki nokta bir eğri çizmiyor: Python iyi, Go zayıf çıktı ama
+4. **Üçüncü bir kod tabanı.** İki nokta bir eğri çizmiyor: Python iyi, Go zayıf çıktı ama
    aradaki farkın dilden mi boyuttan mı alandan mı geldiği belli değil. Üçüncü bir repo (küçük bir
    Go projesi ya da büyük bir Python projesi) değişkenleri ayırmaya yarar.
 
-4. **`d36` etiketi gözden geçirilmeli.** "Zamanlanmış çalıştırmalar hangi kaynak üzerinden
+5. **`d36` etiketi gözden geçirilmeli.** "Zamanlanmış çalıştırmalar hangi kaynak üzerinden
    yönetiliyor" sorusunun etiketi `resources/beta/deployments.py`, ama arama
    `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Düzeltilirse
    **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
