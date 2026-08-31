@@ -7,6 +7,7 @@ yanlış bir iyileştirme kararına yol açar.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -342,3 +343,61 @@ def test_symbol_recall_counts_only_questions_with_expectations():
         RetrievalResult(question_id="c", found=True, rank=1, symbols_found=None, returned=[]),
     ]
     assert report.symbol_recall == 0.5  # beklentisiz soru paydaya girmiyor
+
+
+def test_pyproject_dependencies_match_requirements():
+    """İki kurulum yolu ayrışırsa `pip install -e .` farklı bir ortam üretir."""
+    import re
+    import tomllib
+
+    kok = Path(__file__).resolve().parent.parent
+    with open(kok / "pyproject.toml", "rb") as handle:
+        bagimliliklar = tomllib.load(handle)["project"]["dependencies"]
+    kod = {re.split(r"[><=]", d)[0].strip() for d in bagimliliklar}
+
+    istenen = set()
+    for satir in (kok / "requirements.txt").read_text().splitlines():
+        satir = satir.split("#")[0].strip()
+        if satir:
+            istenen.add(re.split(r"[><=]", satir)[0].strip())
+    # pytest ve ruff pyproject'te ayrı grupta (optional-dependencies.dev)
+    istenen -= {"pytest", "ruff"}
+    assert kod == istenen, f"eksik: {istenen - kod}, fazla: {kod - istenen}"
+
+
+def test_mode_defaults_follow_the_provider():
+    """Yanlış eşleşme sessizce kalite kaybettiriyordu; kullanıcıya bırakılmıyor."""
+    from codeqa.cli import resolve_mode
+
+    assert resolve_mode(None, "hash") == "hybrid"  # yer tutucu: BM25 taşıyor
+    assert resolve_mode(None, "voyage") == "vector"  # gerçek sağlayıcı: saf vektör
+    assert resolve_mode(None, "ollama") == "vector"
+    assert resolve_mode("bm25", "voyage") == "bm25"  # açıkça verilen kazanır
+
+
+def test_wilson_interval_stays_inside_zero_one():
+    """Basit normal yaklaşım 14/14'te üst sınırı %100'ün üstüne taşıyor."""
+    from codeqa.evaluation import wilson_interval
+
+    alt, ust = wilson_interval(14, 14)
+    assert ust == 1.0
+    assert 0.7 < alt < 0.8  # tavana vursa bile belirsizlik görünür kalıyor
+    assert wilson_interval(0, 0) == (0.0, 0.0)
+
+
+def test_small_sample_interval_is_wider_than_large_sample():
+    """Aynı oran, farklı örneklem: 14 soruda aralık 60 soruya göre geniş olmalı."""
+    from codeqa.evaluation import wilson_interval
+
+    dar = wilson_interval(56, 60)
+    genis = wilson_interval(13, 14)
+    assert (genis[1] - genis[0]) > (dar[1] - dar[0])
+
+
+def test_mean_interval_handles_fractional_coverage():
+    """Kapsam ikili değil (bir soru 0.5 kapsanmış olabilir); Wilson uygun değil."""
+    from codeqa.evaluation import mean_interval
+
+    alt, ust = mean_interval([1.0, 0.5, 1.0, 0.5, 1.0])
+    assert alt < 0.8 < ust
+    assert mean_interval([1.0]) == (0.0, 0.0)  # tek gözlemde aralık tanımsız

@@ -117,6 +117,8 @@ def cmd_embed(args: argparse.Namespace) -> int:
 
 def _build_search(args: argparse.Namespace) -> HybridSearch:
     _load_env()
+    if hasattr(args, "mode"):
+        args.mode = resolve_mode(args.mode, args.provider)
     records = _read_jsonl(Path(args.index))
     embedder = get_embedder(args.provider, args.model)
     cache = EmbeddingCache(embedder.name)
@@ -265,7 +267,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         index_path=Path(args.index),
         provider=args.provider,
         model=args.model,
-        mode=args.mode,
+        mode=resolve_mode(args.mode, args.provider),
     )
     server.run(transport="stdio")
     return 0
@@ -358,6 +360,27 @@ def _add_embedding_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model", default=None, help="Sağlayıcıya özel embedding modeli")
 
 
+def resolve_mode(mode: str | None, provider: str) -> str:
+    """Mod verilmediyse sağlayıcıya göre seçer.
+
+    İkisi bağımsız değil ve yanlış eşleşme sessizce kalite kaybettiriyor:
+
+    - `hash` anahtarsız yer tutucu, anlamsal arama yapmıyor. Onunla vektör
+      araması zayıf kalıyor ve BM25 tarafı taşıyor (kendi repo, 20 soru:
+      hash+vector recall %65 / MRR 0.230, hash+hybrid %90 / 0.416).
+    - Gerçek bir sağlayıcıda tablo tersine dönüyor: voyage ile büyük İngilizce
+      repoda saf vektör hibriti açık ara geçiyor (akış kapsamı 0.750 vs 0.683).
+
+    Eskiden varsayılan sabit `hybrid`'di ve kullanıcının `--provider voyage`
+    verirken `--mode vector` de vermesi gerekiyordu; vermezse aracın kötü
+    çalıştığını sanıyordu. README bunu uyarı olarak belgeliyordu — uyarmak
+    yerine düzeltmek daha iyi.
+    """
+    if mode:
+        return mode
+    return "hybrid" if provider == "hash" else "vector"
+
+
 def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True) -> None:
     """Arama davranışını ayarlayan ortak seçenekler.
 
@@ -382,9 +405,9 @@ def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True)
     if with_mode:
         parser.add_argument(
             "--mode",
-            default="hybrid",
+            default=None,
             choices=["hybrid", "vector", "bm25"],
-            help="Arama modu (varsayılan: hybrid)",
+            help="Arama modu (varsayılan: sağlayıcıya göre — bkz. resolve_mode)",
         )
     parser.add_argument(
         "--rerank",
@@ -540,14 +563,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_index_arg(serve_parser, str(DEFAULT_OUTPUT))
     _add_embedding_args(serve_parser)
-    # Varsayılan burada `vector`, diğer komutlarda `hybrid`: MCP gerçek bir
-    # embedding sağlayıcısıyla kuruluyor ve ölçümde saf vektör hibriti geçiyor.
-    # Gerekçenin tamamı `_add_retrieval_args` docstring'inde.
     serve_parser.add_argument(
         "--mode",
-        default="vector",
+        default=None,
         choices=["hybrid", "vector", "bm25"],
-        help="Arama modu (varsayılan: vector)",
+        help="Arama modu (varsayılan: sağlayıcıya göre — bkz. resolve_mode)",
     )
     serve_parser.set_defaults(func=cmd_serve)
 

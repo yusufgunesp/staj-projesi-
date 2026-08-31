@@ -27,6 +27,40 @@ from .search import HybridSearch
 
 RUNS_DIR = Path("runs")
 
+#: %95 güven düzeyi için normal dağılım katsayısı.
+Z95 = 1.96
+
+
+def wilson_interval(basari: int, deneme: int, z: float = Z95) -> tuple[float, float]:
+    """İkili bir oran için Wilson skor aralığı.
+
+    Küçük örneklemde normal yaklaşımdan doğru: 14 soruda 13 başarı, basit
+    yaklaşımla %93 ± %13 verip üst sınırı %106'ya taşırken Wilson aralığı
+    [0,66 – 0,99] diyor. Bu setlerde soru sayısı hep küçük olduğu için önemli.
+    """
+    if deneme == 0:
+        return (0.0, 0.0)
+    oran = basari / deneme
+    payda = 1 + z**2 / deneme
+    merkez = (oran + z**2 / (2 * deneme)) / payda
+    yari = z * ((oran * (1 - oran) / deneme + z**2 / (4 * deneme**2)) ** 0.5) / payda
+    return (max(0.0, merkez - yari), min(1.0, merkez + yari))
+
+
+def mean_interval(degerler: list[float], z: float = Z95) -> tuple[float, float]:
+    """Ortalamanın güven aralığı — kapsam gibi 0-1 arası kesir ortalamaları için.
+
+    Kapsam ikili değil (bir soru 0.5 kapsanmış olabilir), o yüzden Wilson
+    uygun değil; ortalamanın standart hatası kullanılıyor.
+    """
+    n = len(degerler)
+    if n < 2:
+        return (0.0, 0.0)
+    ortalama = sum(degerler) / n
+    varyans = sum((d - ortalama) ** 2 for d in degerler) / (n - 1)
+    hata = z * (varyans / n) ** 0.5
+    return (max(0.0, ortalama - hata), min(1.0, ortalama + hata))
+
 
 @dataclass
 class Question:
@@ -312,8 +346,15 @@ def format_report(report: Report, questions: list[Question]) -> str:
             symbol = "  (sembol eksik)" if result.symbols_found is False else ""
             lines.append(f"  {mark} {result.question_id}: {rank}{symbol}")
         lines.append("")
-        lines.append(f"  recall@k     : {report.recall:.0%}")
-        lines.append(f"  kapsam       : {report.retrieval_coverage:.0%}")
+        n = len(report.retrieval)
+        alt, ust = wilson_interval(sum(r.found for r in report.retrieval), n)
+        lines.append(
+            f"  recall@k     : {report.recall:.0%}  (%95 GA: {alt:.0%}-{ust:.0%}, n={n})"
+        )
+        kalt, kust = mean_interval([r.coverage for r in report.retrieval])
+        lines.append(
+            f"  kapsam       : {report.retrieval_coverage:.0%}  (%95 GA: {kalt:.0%}-{kust:.0%})"
+        )
         symbol_line = (
             "ölçülmedi (sette sembol beklentisi yok)"
             if report.symbol_recall is None
@@ -333,7 +374,12 @@ def format_report(report: Report, questions: list[Question]) -> str:
                 f"{result.tool_calls} tool{warn}"
             )
         lines.append("")
-        lines.append(f"  doğruluk       : {report.answer_accuracy:.0%}")
+        na = len(report.answers)
+        aalt, aust = wilson_interval(sum(a.cited_expected for a in report.answers), na)
+        lines.append(
+            f"  doğruluk       : {report.answer_accuracy:.0%}"
+            f"  (%95 GA: {aalt:.0%}-{aust:.0%}, n={na})"
+        )
         lines.append(f"  dosya kapsamı  : {report.file_coverage:.0%}")
         lines.append(f"  uydurma referans: {report.total_unverified}")
         lines.append(f"  cevap başına referans: {report.citations_per_answer:.1f} dosya")

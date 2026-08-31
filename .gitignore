@@ -13,3 +13,6 @@ data/
 runs/
 
 .DS_Store
+
+# pip install -e . çıktısı
+*.egg-info/
