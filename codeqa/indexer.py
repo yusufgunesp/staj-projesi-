@@ -5,10 +5,7 @@ getirir. Metin bölme (fixed-size chunking) yerine sözdizimi ağacı kullanıl�
 böylece her parça anlamlı bir bütün oluyor ve satır aralığı doğru kalıyor —
 cevaplarda `dosya:satır` referansı verebilmenin ön şartı bu.
 
-Python yerleşik `ast` ile ayrıştırılıyor. Çok dil desteği (C, C++, Java, C#, Go,
-TypeScript, JavaScript) vardı ve kaldırıldı: doğruluk yalnızca Python'da
-ölçülmüştü, Go'da ölçüldüğünde belirgin şekilde düşük çıktı. Ölçülmemiş bir
-yetenek, taşınması gereken bir yükümlülük. Gerekçenin tamamı README'de.
+Yalnızca Python indeksleniyor, yerleşik `ast` ile.
 """
 
 from __future__ import annotations
@@ -49,9 +46,7 @@ _FUNC_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 MAX_ASSIGNMENT_CHARS = 300
 
 
-#: İndekslenebilen uzantılar. Yalnızca Python: doğruluk yalnızca Python'da
-#: ölçüldü ve ölçülmemiş bir yetenek raporda yükümlülük. Çok dil desteği vardı
-#: ve kaldırıldı; gerekçesi README'de.
+#: İndekslenebilen uzantılar.
 SOURCE_EXTENSIONS: frozenset[str] = frozenset({".py"})
 
 

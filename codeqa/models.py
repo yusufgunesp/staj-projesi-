@@ -30,7 +30,6 @@ class Chunk:
     signature: str | None = None
     docstring: str | None = None
     parent: str | None = None
-    language: str = "python"
 
     @property
     def id(self) -> str:
@@ -72,7 +71,6 @@ class Chunk:
             "signature": self.signature,
             "docstring": self.docstring,
             "parent": self.parent,
-            "language": self.language,
             "context": self.context,
             "text": self.text,
             "content_hash": self.content_hash,

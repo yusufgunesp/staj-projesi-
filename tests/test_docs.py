@@ -45,7 +45,7 @@ def test_chunk_metadata():
     chunk = chunks[0]
     assert chunk.source == "doc"
     assert chunk.kind == "section"
-    assert chunk.language == "markdown"
+    assert chunk.source == "doc"
     assert chunk.location.startswith("docs/README.md:")
 
 

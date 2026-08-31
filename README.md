@@ -16,9 +16,9 @@ Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 dokunulmamış test bölmesinde **cevap doğruluğu %100, dosya kapsamı %93**; uydurma referans hiçbir
 koşuda görülmedi.
 
-**Araç yalnızca Python indeksliyor.** Sekiz dil desteği vardı; Go'da ölçüldüğünde belirgin
-şekilde düşük çıktığı için kaldırıldı. Ölçülmemiş bir yetenek, raporda savunulamayan bir iddia.
-Gerekçe ve ölçümler [Sonuçlar](#sonuçlar) bölümünde.
+**Araç yalnızca Python indeksliyor.** Bir dönem sekiz dil destekleniyordu; ikinci bir dilde
+ölçüldüğünde sonuç belirgin şekilde düştüğü için kaldırıldı — ayrıntı
+[Öğrenilenler](#bir-dilde-ölçülen-başarım-başka-dili-öngörmüyor) bölümünde.
 
 ## İçindekiler
 
@@ -70,12 +70,8 @@ Diğer komutlar:
 | `serve` | MCP sunucusu olarak çalışır (Claude Code entegrasyonu) |
 | `stats` / `grep` | İndeksi inceleme araçları |
 
-**Desteklenen dil: Python.** Yerleşik `ast` ile ayrıştırılıyor.
-
-> Bir dönem sekiz dil destekleniyordu (C, C++, Java, C#, Go, TypeScript, JavaScript; tree-sitter
-> grameriyle). Go'da uçtan uca ölçüm yapıldığında sonuç Python'un belirgin şekilde altında çıktı
-> ve destek kaldırıldı. Gerekçe: **ölçülmemiş bir yetenek, savunulamayan bir iddiadır.** Ayrıntı
-> [Sonuçlar](#sonuçlar) bölümünde; kod git geçmişinde duruyor.
+**Desteklenen dil: Python.** Yerleşik `ast` ile ayrıştırılıyor; başka uzantılar sessizce
+atlanıyor.
 
 **Embedding sağlayıcıları:** `voyage` (bulut, en iyi sonuç), `ollama` (local, kod dışarı çıkmaz),
 `hash` (anahtarsız yer tutucu — anlamsal arama **yapmaz**, sadece boru hattını denemek için).
@@ -294,56 +290,6 @@ Son üç satırda MRR'ın recall'la aynı yöne gitmediğine dikkat: docstring'l
 Zenginleşen tip parçaları vektör aramasında daha rekabetçi hâle geliyor; ağırlıklandırma onu
 dengeliyor. İkisi birlikte her iki metrikte de başlangıcın üstünde.
 
-**Çok dil desteği neden kaldırıldı**
-
-Araç bir dönem sekiz dil indeksliyordu ama doğruluk yalnızca Python'da ölçülmüştü. İkinci bir kod
-tabanı eklendi — Prometheus, Go, 453 kod dosyası, farklı bir alan (zaman serisi veritabanı) — ve
-24 soruyla ölçüldü.
-
-İlk karşılaştırma **adil değildi**, bunu ancak sebebi ararken fark ettim. İki indeksin bileşimi
-çok farklıydı: anthropic SDK'sı site-packages'tan kurulu olduğu için testler ve dokümanlar
-paketlenmiyor (doküman %0, test %0); Prometheus depo kökünden indekslendiği için indeksin **%51'i
-üretim kodu değildi** (doküman %15, test %36).
-
-Bileşim eşitlendikten sonra bile fark duruyordu:
-
-| Set (test bölmesi) | recall@8 | kapsam | MRR |
-|--------------------|----------|--------|-----|
-| anthropic SDK (Python) | 100% | **93%** | **0.847** |
-| Prometheus (Go), ham indeks | 92% | 67% | 0.406 |
-| Prometheus (Go), yalnızca kod | 100% | **79%** | **0.674** |
-
-Adil karşılaştırmada fark yarı yarıya küçülüyor (kapsamda 26 puan yerine 14) ama kaybolmuyor.
-Kalanın sebebi bulunamadı; adaylar indeks boyutu, alanın yapısı ve Go'nun kendi biçimiydi — Go'da
-fonksiyon sayısı üç kat fazla ve her biri daha kısa (ortanca 272 vs 391 karakter), ayrıca
-fonksiyonların %16'sı `if err != nil` içeriyor, yani parçalar birbirine daha çok benziyor.
-
-**Bu ölçüm iki şey öğretti ve ikincisi kararı verdi.**
-
-Birincisi teknik: doküman parçaları kod sonuçlarını bastırıyor. Markdown indeksin %15'iyken
-sonuçların %28'ini kaplıyordu; çıkarınca MRR 0.406 → 0.586. Test dosyaları neredeyse hiçbir şey
-yapmıyordu (0.406 → 0.421). Mekanizma anlaşılır: sorular Türkçe doğal dilde, markdown da düz
-metin — birbirlerine benziyorlar, ama cevaplar kodda.
-
-İkincisi karar: **ölçülmemiş bir yetenek savunulamaz.** Sekiz dil iddiası bir dilde kanıtlıydı,
-ikinci dilde ölçüldüğünde zayıf çıktı ve kalan altı dil hiç ölçülmedi. Bir müşteriye "Java'da da
-çalışır" demek için elde hiçbir şey yoktu. Destek kaldırıldı; kod git geçmişinde duruyor ve
-gerekirse geri getirilebilir — ama geri getirilirse **o dilde ölçülerek** getirilmeli.
-
-**Yol boyunca bulunan hata**
-
-Farkın sebebini ararken ayrı bir kusur da çıktı: Python'da dokümantasyon gövdenin *içinde*
-(docstring), ama Go, C, C++, Java, C#, TypeScript ve JavaScript'te bildirimin **üstünde** duruyor.
-Parça metni bildirimden başladığı için bu yorumlar indekse hiç girmiyordu.
-
-Ölçülen kayıp: incelenen 1500 Go fonksiyonunun 607'sinin üstünde yorum var ve **hiçbiri parçaya
-girmiyordu — kayıp %100.** Yani araç, desteklediğini söylediği sekiz dilin yedisinde
-dokümantasyonu görmüyordu. Tek kod tabanıyla ölçüldüğü sürece bu görülemezdi, çünkü Python o yolu
-kullanmıyor. Düzeltildi ve **getirme hiç kıpırdamadı** — düzeltmenin faydası ölçülemedi.
-
-Bu, ikinci kod tabanının asıl değerini gösteriyor: tek repoda görünmeyen bir hatayı ilk günde
-ortaya çıkardı, ve sonunda bir yeteneğin kaldırılmasına yol açtı.
-
 **Embedding sağlayıcıları (60 soru, hibrit):**
 
 | Sağlayıcı | Nerede | recall@8 | MRR |
@@ -473,6 +419,39 @@ yapılandırmada çıktı. **Ölçülüp reddedilen bir fikir, koşullar değiş
 Not: "generated" dosya işareti kullanılamaz bir sinyal — bu SDK'da dosyaların %92'si öyle
 işaretli, sorularımızın gerçek cevapları dahil.
 
+### Bir dilde ölçülen başarım başka dili öngörmüyor
+
+Araç bir dönem sekiz dil indeksliyordu (tree-sitter ile C, C++, Java, C#, Go, TypeScript,
+JavaScript) ama doğruluk yalnızca Python'da ölçülmüştü. İkinci bir kod tabanında — Prometheus,
+Go, 453 kod dosyası — ölçüldüğünde sonuç belirgin şekilde düştü:
+
+| | kapsam | MRR |
+|---|--------|-----|
+| anthropic SDK (Python) | 93% | 0.847 |
+| Prometheus (Go) | 79% | 0.674 |
+
+Üç şey öğretti.
+
+**İlk karşılaştırma adil değildi.** İki indeksin bileşimi çok farklıydı: anthropic SDK'sı
+site-packages'tan kurulu olduğu için testler ve dokümanlar paketlenmiyor (%0); Prometheus depo
+kökünden indekslendiği için indeksin **%51'i üretim kodu değildi**. Eşitlenince fark yarı yarıya
+küçüldü (26 puan yerine 14) ama kaybolmadı. **Kod tabanları karşılaştırılırken indeks bileşimi
+eşitlenmeli.**
+
+**Doküman parçaları kod sonuçlarını bastırıyor.** Markdown indeksin %15'iyken sonuçların %28'ini
+kaplıyordu; çıkarınca MRR 0.406 → 0.586. Test dosyaları neredeyse etkisizdi (0.406 → 0.421).
+Mekanizma: sorular doğal dilde, markdown da düz metin — birbirlerine benziyorlar, ama cevaplar
+kodda. Kod sorusu soruluyorsa `--no-docs` ile indekslemek gerekiyor.
+
+**Tek kod tabanıyla görülemeyen bir hata çıktı.** Python'da dokümantasyon gövdenin *içinde*
+(docstring), ama diğer yedi dilde bildirimin **üstünde** duruyor. Parça metni bildirimden
+başladığı için bu yorumlar indekse hiç girmiyordu — incelenen 1500 Go fonksiyonunun 607'sinde
+yorum vardı, **kayıp %100**. Düzeltildi ve getirmeyi kıpırdatmadı.
+
+Sonuç: çok dil desteği kaldırıldı, araç yalnızca Python indeksliyor. **Ölçülmemiş bir yetenek,
+savunulamayan bir iddiadır.** Kod git geçmişinde duruyor; geri getirilirse o dilde ölçülerek
+getirilmeli.
+
 ### Aynı hata iki kez, iki farklı kılıkta
 
 Önbellek katmanında art arda iki performans hatası çıktı ve ikisi de aynı kök sebebe dayanıyordu:
@@ -536,9 +515,10 @@ codeqa/
 DEMO.md          müdüre gösterilecek akış, komutlar ve fallback yolları
 eval/
   questions.json            kendi repo, 20 soru
-  questions_anthropic.json  SDK, 60 soru (tek konum)
-  questions_akis.json       SDK, 20 soru (akış, 2-4 dosya)
-  questions_zor.json        SDK, 26 soru (12 dev / 14 test)
+  questions_anthropic.json  SDK, 60 soru (tek konum, 40 dev / 20 test)
+  questions_akis.json       SDK, 20 soru (akış, 2-4 dosya, 10 dev / 10 test)
+  questions_zor.json        SDK, 26 soru (zor, 12 dev / 14 test)
+  KULLANICI_DENEYI.md       değer hipotezini ölçmek için protokol
 tests/           184 birim testi — ağ ve API anahtarı gerektirmiyor
 data/, runs/     üretilen çıktılar (git'e girmez)
 ```
@@ -549,9 +529,9 @@ data/, runs/     üretilen çıktılar (git'e girmez)
    sorunu duruyor. Farklı bir Python projesi (django, requests, bir iş uygulaması) bu boşluğu dil
    değiştirmeden kapatır — ve karşılaştırma da adil olur, çünkü indeks bileşimi eşitlenebilir.
 
-2. **Doküman ağırlıklandırmasını Python tarafında ölçmek.** Doküman parçalarının kod sonuçlarını
-   bastırdığı Go ölçümünde görüldü (markdown indeksin %15'i ama sonuçların %28'i; çıkarılınca MRR
-   0.406 → 0.586). Python'da da geçerli mi bilinmiyor; `--no-docs` zaten var.
+2. **Doküman ağırlıklandırmasını ölçmek.** Doküman parçalarının kod sonuçlarını bastırdığı
+   görüldü (bkz. Öğrenilenler). Bu indekste doküman payı yalnızca %0,4 olduğu için etkisi
+   ölçülemiyor; doküman ağırlıklı bir repoda ölçülmeli. `--no-docs` zaten var.
 
 3. **Zor setin test bölmesi büyütülmeli.** Şu an 14 soru; bir soru ~3.5 puan ediyor, yani tek bir
    soruluk oynama gürültü seviyesinde. Ayrıca her yeni deneme test'ten soru harcıyor (aşağıya

@@ -119,7 +119,6 @@ def extract_from_markdown(source: str, rel_path: str) -> list[Chunk]:
                     text=part_text,
                     context=f"{rel_path} > {title_path} (doküman)",
                     parent=" > ".join(p for p in path_parts[:-1] if p) or None,
-                    language="markdown",
                 )
             )
     return chunks
