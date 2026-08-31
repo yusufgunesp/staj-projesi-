@@ -147,18 +147,18 @@ def build_server(
         except IndexNotReady as exc:
             return str(exc)
         records = state["records"]
-        languages: dict[str, int] = {}
+        # Dil dökümü kaldırıldı: araç yalnızca Python indeksliyor, satır her
+        # zaman "python: N" olurdu. Parça türü dökümü bilgi taşıyor.
+        kinds: dict[str, int] = {}
         paths = set()
         for record in records:
-            languages[record.get("language", "?")] = (
-                languages.get(record.get("language", "?"), 0) + 1
-            )
+            kinds[record["kind"]] = kinds.get(record["kind"], 0) + 1
             paths.add(record["path"])
-        breakdown = ", ".join(f"{name}: {count}" for name, count in sorted(languages.items()))
+        breakdown = ", ".join(f"{name}: {count}" for name, count in sorted(kinds.items()))
         return (
             f"İndeks : {index_path}\n"
             f"Parça  : {len(records)} ({len(paths)} dosya)\n"
-            f"Diller : {breakdown}\n"
+            f"Türler : {breakdown}\n"
             f"Arama  : {provider} / {mode}"
         )
 

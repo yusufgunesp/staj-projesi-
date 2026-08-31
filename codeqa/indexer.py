@@ -5,9 +5,10 @@ getirir. Metin bölme (fixed-size chunking) yerine sözdizimi ağacı kullanıl�
 böylece her parça anlamlı bir bütün oluyor ve satır aralığı doğru kalıyor —
 cevaplarda `dosya:satır` referansı verebilmenin ön şartı bu.
 
-Python yerleşik `ast` ile, diğer diller tree-sitter grameriyle ayrıştırılıyor
-(bkz. `languages.py`). Desteklenen diller: Python, C, C++, Java, C#, Go,
-TypeScript, JavaScript.
+Python yerleşik `ast` ile ayrıştırılıyor. Çok dil desteği (C, C++, Java, C#, Go,
+TypeScript, JavaScript) vardı ve kaldırıldı: doğruluk yalnızca Python'da
+ölçülmüştü, Go'da ölçüldüğünde belirgin şekilde düşük çıktı. Ölçülmemiş bir
+yetenek, taşınması gereken bir yükümlülük. Gerekçenin tamamı README'de.
 """
 
 from __future__ import annotations
@@ -15,8 +16,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from .languages import EXTENSION_MAP, spec_for
-from .languages import extract_from_source as extract_with_grammar
 from .models import Chunk, IndexStats
 
 #: Taranmayacak dizinler. Bunlar kod tabanının kendisi değil, üretilmiş/çekilmiş dosyalar.
@@ -50,8 +49,10 @@ _FUNC_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 MAX_ASSIGNMENT_CHARS = 300
 
 
-#: İndekslenebilen tüm uzantılar: Python (yerleşik `ast`) + tree-sitter dilleri.
-SOURCE_EXTENSIONS: frozenset[str] = frozenset({".py"}) | frozenset(EXTENSION_MAP)
+#: İndekslenebilen uzantılar. Yalnızca Python: doğruluk yalnızca Python'da
+#: ölçüldü ve ölçülmemiş bir yetenek raporda yükümlülük. Çok dil desteği vardı
+#: ve kaldırıldı; gerekçesi README'de.
+SOURCE_EXTENSIONS: frozenset[str] = frozenset({".py"})
 
 
 def iter_source_files(root: Path, excludes: frozenset[str] = DEFAULT_EXCLUDES):
@@ -275,17 +276,13 @@ def extract_from_source(source: str, rel_path: str) -> list[Chunk]:
 def index_file(path: Path, root: Path) -> list[Chunk]:
     """Tek dosyayı indeksler. Yol, repo köküne göre göreli tutulur.
 
-    Python `ast` ile ayrıştırılıyor — standart kütüphanede var ve tree-sitter'dan
-    daha isabetli sonuç veriyor. Diğer diller tree-sitter grameriyle.
+    Yalnızca Python: yerleşik `ast` ile ayrıştırılıyor.
     """
+    if path.suffix != ".py":
+        return []
     rel_path = path.resolve().relative_to(root.resolve()).as_posix()
     source = path.read_bytes().decode("utf-8", errors="replace")
-    if path.suffix == ".py":
-        return extract_from_source(source, rel_path)
-    spec = spec_for(path.name)
-    if spec is None:
-        return []
-    return extract_with_grammar(source, rel_path, spec)
+    return extract_from_source(source, rel_path)
 
 
 def index_repo(

@@ -167,8 +167,10 @@ müdahaleyi ödüllendiriyordu. Bağımsız bir ölçüte baktığımda sonuç d
 
 ## 7. Açık sorular (1 dakika) — müdüre soru
 
-**Müşteri projeleri hangi dillerde yazılıyor?** Araç sekiz dili okuyabiliyor ama doğruluk
-yalnızca Python'da ölçüldü. Ağırlıklı dil bilinirse ölçüm oradan tekrarlanır.
+**Müşteri projeleri hangi dillerde yazılıyor?** Araç şu an yalnızca Python indeksliyor. Sekiz dil
+desteği vardı; Go'da ölçülünce Python'un belirgin şekilde altında kaldığı için kaldırıldı.
+Ağırlıklı dil Python değilse desteği geri getirmek kolay — ama **ölçmeden geri getirmek yanlış
+olur**, çünkü iki dilin sonucu birbirini öngörmedi.
 
 **Yerel model zorunluluk mu, yoksa seçenek mi?** Mimari her iki cevaba da hazır ve yerel
 seçeneğin kalite maliyeti ölçüldü. Cevap, varsayılan yapılandırmayı belirler.
@@ -199,6 +201,7 @@ sent. Arama tarafı tamamen ücretsiz.
 model seçeneği ölçüldü ve çalışıyor: `bge-m3` ile bulut modeliyle aynı bulma oranı, MRR'da
 0,05 fark. Kodun dışarı çıkamadığı projelerde kullanılabilir.
 
-**"Kaç dil destekliyor?"** Sekiz: Python, C, C++, Java, C#, Go, TypeScript, JavaScript.
-Ama doğruluk yalnızca Python'da ölçüldü — diğerleri için sembol çıkarma birim testlerle
-doğrulandı, uçtan uca ölçüm yapılmadı.
+**"Kaç dil destekliyor?"** Yalnızca Python. Bir dönem sekiz dil destekleniyordu; Go'da uçtan uca
+ölçüm yapılınca sonuç Python'un belirgin şekilde altında çıktı ve destek kaldırıldı. Gerekçe:
+ölçülmemiş bir yetenek savunulamaz. Kod git geçmişinde duruyor, ama geri getirilirse o dilde
+ölçülerek getirilmeli.

@@ -131,9 +131,11 @@ def test_read_chunk_unknown_location(indexed):
     assert "indekste yok" in output
 
 
-def test_index_status_reports_languages(indexed):
+def test_index_status_reports_chunk_kinds(indexed):
+    """Dil dökümü kaldırıldı: tek dil kaldığı için satır her zaman aynıydı."""
     output = call(server_for(indexed), "index_status", {})
-    assert "python" in output and "go" in output
+    assert "Türler" in output
+    assert "function" in output or "method" in output
     assert "Parça" in output
 
 
