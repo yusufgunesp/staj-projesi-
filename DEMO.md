@@ -1,6 +1,6 @@
 # Demo akışı
 
-**Süre:** ~13 dakika, ikinci canlı soruyla ~15 · **Dinleyici:** yazılımcı olmayabilir ·
+**Süre:** ~14 dakika, ikinci canlı soruyla ~16 · **Dinleyici:** yazılımcı olmayabilir ·
 **Toplam maliyet:** ~5 sent (ölçüldü: canlı soru başına 0,6-2,2 sent, geri kalanı bedava)
 
 Her adımda önce **ne soracağın**, sonra **ne söyleyeceğin** var. Komutlar birebir kopyalanabilir.
@@ -112,7 +112,7 @@ Vaktin dar değilse bu ikinci soruyu atlama. Demoya iki dakika ekliyor, karşıl
 
 ---
 
-## 3. Neden güvenilir (3 dakika)
+## 3. Neden güvenilir (4 dakika)
 
 > "Bir aracın doğru cevap verdiğini nasıl bilirsin? Ben de bilmiyordum, o yüzden ölçtüm."
 
@@ -120,7 +120,7 @@ Vaktin dar değilse bu ikinci soruyu atlama. Demoya iki dakika ekliyor, karşıl
 .venv/bin/python -m codeqa eval -q eval/questions_zor.json -i data/anthropic.jsonl --provider voyage --split test -k 8 --label demo
 ```
 
-**Süre: yarım saniye, ücretsiz.** Çıktı: recall %100, kapsam %93, MRR 0.847.
+**Süre: yarım saniye, ücretsiz.** Çıktı: **recall %96, kapsam %90, MRR 0.757** (n=26).
 
 Anlatılacak üç şey:
 
@@ -136,15 +136,26 @@ iyileştirme denendi; üçü de dev'de kazandı, üçü de test'te sıfır verdi
 
 > "Yani elimdeki sayı, kendimi kandırmadığımı kontrol ederek elde edilmiş bir sayı."
 
-### Ekranda görünüp de anlatılmazsa aleyhine çalışacak iki şey
+### Ekranda görünüp de anlatılmazsa aleyhine çalışacak üç şey
 
-Bu ikisini **sen söyle**, sorulmasını bekleme. İkisi de aslında bölümün lehine.
+Üçünü de **sen söyle**, sorulmasını bekleme. İkisi de aslında bölümün lehine.
 
-**Güven aralığı çıktının içinde yazıyor:** `recall@k : 100% (%95 GA: 78%-100%, n=14)`.
+**Ekranda kırmızı bir `✗` görünecek — `z34: bulunamadı`.** Bunu saklamaya çalışma, göster:
 
-> "Yanındaki aralığı da görüyorsunuz: 14 soruyla %100 demek, gerçek başarımın %78'in
-> üstünde olduğunu söylemek demek. Sayıyı olduğundan büyük göstermemek için aralığı
-> raporun içine koydum. Test bölmesini büyütmek listemde duruyor — yarım günlük iş."
+> "Bakın, bir tanesini kaçırdı. Bunu ekranda bırakıyorum çünkü sildiğim an bu sayının hiçbir
+> anlamı kalmaz. Kaçırdığı soruyu inceledim: hedef dosya indekste var, yani gerçek bir arama
+> hatası. Muhtemel sebebi de biliyorum — soruda 'jeton sayımı' yazmışım, kod `count_tokens`
+> diyor. Soruyu düzeltip %100 yapabilirdim; yapmadım, çünkü sadece kaçıranı düzeltmek skoru
+> tek yönlü şişirir."
+
+**Güven aralığı çıktının içinde yazıyor:** `recall@k : 96% (%95 GA: 81%-99%, n=26)`.
+
+> "Yanındaki aralığı da görüyorsunuz. Bu sayı geçen hafta %100'dü — 14 soruyla ölçüyordum.
+> Test setini 26'ya çıkardım ve kendi sayım düştü. Araç değişmedi; ölçüm aleti hassaslaştı.
+> 14 soruyla %100 demek aslında 'gerçek başarım %78'in üstünde' demekti; şimdi %81'in üstünde
+> olduğunu daha dar bir aralıkla biliyorum."
+
+Bu, bölümün en güçlü cümlesi: **kendi sayısını düşüren biri, sayısını savunabilir.**
 
 **Bir satırda `✓ z16: sıra 9` yazıyor, oysa `-k 8` verdik.** Çelişki değil:
 
@@ -153,15 +164,42 @@ Bu ikisini **sen söyle**, sorulmasını bekleme. İkisi de aslında bölümün 
 > 'recall@8' aslında modele giden listenin tamamı üzerinden; eleme yapan bir sürüm de
 > denendi, sembol isabetini düşürdüğü için kabul edilmedi."
 
-### Ve ölçmediğim şey
+### İkinci kod tabanı — sorulmadan söyle
 
-> "Bütün bu sayılar tek bir kod tabanından: Anthropic'in Python SDK'sı. Üç soru seti, 106
-> soru, ama tek repo. İkinci bir Python projesinde ölçmek listemin ilk maddesi — yarım
-> günlük, bedava iş. O ölçüm yapılana kadar bu sayıların ne kadar genellendiğini
-> bilmiyorum."
+*"Peki bu sadece bu repoda mı çalışıyor?"* sorusu gelmeden sen aç. Cevabı ölçtün:
 
-Bunu söylemek sayıyı zayıflatmıyor, bölümün tezini tamamlıyor: rapor edilen tek şey
-ölçülen şey.
+```bash
+.venv/bin/python -m codeqa eval -q eval/questions_saleor.json -i data/saleor.jsonl --provider voyage --split test -k 8 --label demo2
+```
+
+**Süre: yarım saniye.** Çıktı: recall %100, kapsam %96, MRR 0.573 (n=26).
+
+> "Bunlar Anthropic SDK'sının sayılarıydı. Şimdi bambaşka bir kod tabanı: Saleor, açık kaynak
+> bir e-ticaret sistemi — ürün, sipariş, ödeme, stok, vergi. Sizin projelerinize çok daha
+> yakın. Bin dosya, on iki bin parça. Doğru dosyayı **her seferinde** buluyor."
+
+> "Ama şuraya bakın: MRR 0.573. Bu şu demek — doğru cevabı buluyor ama ortalama ikinci sırada
+> veriyor, SDK'da birinci sıradaydı. Daha büyük ve daha çeşitli bir uygulamada doğru cevabın
+> yanında daha çok benzer aday var. Aracın zayıf noktası bu ve size düşmüş hâliyle
+> gösteriyorum."
+
+Ve hâlâ ölçmediğin şeyi de söyle:
+
+> "Ölçmediğim tek şey şu: bu araç gerçekten zaman kazandırıyor mu. Getirmeyi ölçtüm,
+> cevabı ölçtüm, ama 'adapte olma süresini kısaltır' iddiasını ölçmedim — çünkü tek başıma
+> ölçemem. Bunun için birinizin yarım gününe ihtiyacım var."
+
+Bu §7'ye köprü: rapor edilen tek şey ölçülen şey.
+
+**İstersen Saleor'da canlı soru da sor** (provada denendi, 11,7 saniye, ~1,3 sent). Dinleyici
+e-ticaret dünyasını tanıyorsa bu, SDK sorusundan daha çok konuşur:
+
+```bash
+.venv/bin/python -m codeqa ask "sipariş toplamı hesaplanırken indirim ve vergi nasıl uygulanıyor?" -i data/saleor.jsonl --provider voyage --repo repos/saleor --model-name claude-haiku-4-5-20251001
+```
+
+Cevap `order/base_calculations.py`, `tax/calculations/order.py`, `order/calculations.py` ve
+eklenti tarafını birlikte gösteriyor — altı referans, beş dosya.
 
 ---
 
