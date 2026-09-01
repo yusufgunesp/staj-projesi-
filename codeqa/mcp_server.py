@@ -17,13 +17,13 @@ vermek hem ucuz hem de daha doğru — istemci kendi bağlamıyla yorumluyor.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 import numpy as np
 
 from .embeddings import CachedEmbedder, EmbeddingCache, get_embedder
+from .models import read_jsonl
 from .search import HybridSearch
 
 #: Tek bir arama sonucunda döndürülecek azami satır. İstemcinin bağlam
@@ -62,8 +62,7 @@ def load_searcher(
             f"İndeks bulunamadı: {index_path}\n"
             f"Önce çalıştırın: python -m codeqa index <repo> -o {index_path}"
         )
-    with index_path.open(encoding="utf-8") as handle:
-        records = [json.loads(line) for line in handle if line.strip()]
+    records = read_jsonl(index_path)
 
     embedder = get_embedder(provider, model)
     cache = (

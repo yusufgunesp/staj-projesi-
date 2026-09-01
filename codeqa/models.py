@@ -1,13 +1,40 @@
-"""Indeks parçalarının (chunk) veri modeli."""
+"""Indeks parçalarının (chunk) veri modeli ve indeksin disk biçimi."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    """İndeksi diskten okur.
+
+    İndeksin disk biçimi satır başına bir JSON nesnesi: `Chunk.to_dict()`'in
+    çıktısı. Okuma ve yazma burada duruyor çünkü biçim `Chunk`'a ait; altı ayrı
+    yerde tekrar edildiğinde biri değişip diğerleri kalabilir.
+    """
+    with Path(path).open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def write_jsonl(records: Iterable[Chunk | dict], path: Path) -> None:
+    """İndeksi diske yazar. `Chunk` ya da sözlük kabul ediyor."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            data = record.to_dict() if isinstance(record, Chunk) else record
+            handle.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
 @dataclass

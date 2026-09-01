@@ -1,7 +1,6 @@
 {
   "_aciklama": "İkinci Python kod tabanı: Saleor (açık kaynak e-ticaret, Django). Devir belgesinin 1 numaralı maddesi — 'bütün ölçümler tek repodan' sorununu kapatmak için. Repo seçimi bilinçli: anthropic SDK bir kütüphane ve büyük kısmı üretilmiş kod; Saleor elle yazılmış bir iş uygulaması (ürün, fiyat, sipariş, ödeme, stok, vergi) ve müşteri projelerine çok daha yakın. İndeks bileşimi eşitlendi: test ve migration dizinleri dışlandı, geriye 1060 dosya kaldı (anthropic SDK 1099). Kural 4 böylece sağlanıyor. NOT: indeks depo kökünden alındığı için yollar 'saleor/' önekli.",
   "_yontem": "UYARI — bu set LLM tarafından yazıldı, insan tarafından değil. Yöntem: sorular kodun içi OKUNMADAN, bir e-ticaret projesine yeni giren birinin soracağı türden yazıldı; sonra expect_files GREP ile işaretlendi (codeqa ile DEĞİL — ölçülen aracı etiketlemede kullanmak %100'ü garantilerdi). Yine de bu bir taslak: rapor edilecek bir sayı üretmeden önce insan gözden geçirmeli ve setin TAMAMI geçirilmeli, sadece kaçırılanlar değil (Kural 3).",
-  "_bolme": "s01-s14 dev, s15-s40 test. Test bölmesi bilerek büyük tutuldu: n=14'te %100 sonucun %95 güven aralığı %78-100 (22 puan), n=26'da %87-100 (13 puan). Soru sayısı doğruluğu artırmıyor, tahminin kesinliğini artırıyor.",
   "repo": "repos/saleor",
   "index": "data/saleor.jsonl",
   "questions": [

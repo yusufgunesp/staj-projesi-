@@ -29,6 +29,7 @@ from pathlib import Path
 from .docs import index_docs
 from .embeddings import EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
+from .models import read_jsonl, write_jsonl
 
 #: Kaydın durduğu yer. İndekslerle aynı dizinde: ikisi de üretilen veri.
 DEFAULT_REGISTRY = Path("data/projects.json")
@@ -277,10 +278,7 @@ def scan_repo(
         raise ValueError(f"{root} içinde indekslenecek Python dosyası bulunamadı.")
 
     index_path = Path(index_path)
-    index_path.parent.mkdir(parents=True, exist_ok=True)
-    with index_path.open("w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    write_jsonl(records, index_path)
 
     embedder = get_embedder(provider, model)
     return {
@@ -305,8 +303,7 @@ def embed_project(
     on_progress: Callable[[int, int], None] | None = None,
 ) -> int:
     """İndeksteki parçaları vektörleştirir; kaç yenisinin hesaplandığını döner."""
-    with Path(index_path).open(encoding="utf-8") as handle:
-        records = [json.loads(line) for line in handle if line.strip()]
+    records = read_jsonl(index_path)
     embedder = get_embedder(provider, model)
     _, computed = embed_records(
         records, embedder, EmbeddingCache(embedder.name), on_progress=on_progress

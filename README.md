@@ -12,10 +12,13 @@ _should_retry'da veriliyor: 408, 409, 429 ve 5xx yeniden deneniyor.
 Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 ```
 
-**Ölçülen sonuç:** `anthropic` Python SDK'sında (1097 dosya, üç soru seti) en zor setin
-dokunulmamış test bölmesinde **cevap doğruluğu %100, dosya kapsamı %93**. Bugüne kadarki bütün
-cevap koşularında toplam **bir** uydurma referans görüldü ve doğrulama katmanı onu yakaladı
-(bkz. [Cevaplama](#cevaplama)).
+**Ölçülen sonuç:** iki Python kod tabanında, hiçbir ayarın görmediği test bölmelerinde —
+`anthropic` SDK'sının en zor setinde **getirme %96, kapsam %90**, ikinci kod tabanı Saleor'da
+**%100 / %96**. Bugüne kadarki bütün cevap koşularında toplam **bir** uydurma referans görüldü ve
+doğrulama katmanı onu yakaladı (bkz. [Cevaplama](#cevaplama)).
+
+Bu sayılar önceki sürümde daha yüksekti (%100 / %93). Araç değişmedi — test bölmeleri büyüdü ve
+küçük örneklem iyimserliği ortadan kalktı. Ayrıntı [Ölçüm](#ölçüm) bölümünde.
 
 **Araç yalnızca Python indeksliyor.** Bir dönem sekiz dil destekleniyordu; ikinci bir dilde
 ölçüldüğünde sonuç belirgin şekilde düştüğü için kaldırıldı — ayrıntı
@@ -23,7 +26,7 @@ cevap koşularında toplam **bir** uydurma referans görüldü ve doğrulama kat
 
 ## İçindekiler
 
-- [Kurulum](#kurulum) · [Kullanım](#kullanım)
+- [Kurulum](#kurulum) · [Kullanım](#kullanım) · [Web arayüzü](#web-arayüzü)
 - [Nasıl çalışıyor](#nasıl-çalışıyor) — [parçalama](#parçalama), [arama](#arama),
   [cevaplama](#cevaplama)
 - [Ölçüm](#ölçüm) — asıl sonuçlar burada
@@ -37,7 +40,8 @@ cevap koşularında toplam **bir** uydurma referans görüldü ve doğrulama kat
 | 1 | Kod sembolü çıkarma, doküman parçalama | Tamam |
 | 2 | Embedding + arama katmanı | Tamam |
 | 3 | Cevaplama katmanı, ölçüm düzeneği, iyileştirmeler | Tamam |
-| 4 | Claude Code / MCP entegrasyonu, çok dil desteği | Tamam — demo sırada |
+| 4 | Claude Code / MCP entegrasyonu, çok dil desteği | Tamam |
+| 5 | Web arayüzü, ikinci kod tabanı, büyütülmüş test bölmeleri | Tamam — demo sırada |
 
 ## Kurulum
 
@@ -273,32 +277,53 @@ hem ayar yapıp hem rapor etmek, ayarı o setin gürültüsüne uydurmak demek.
 
 ### Sonuçlar
 
-Kurulum: `anthropic` Python SDK'sı — 1097 dosya, 4311 parça. Üç soru seti, hepsinde beklenen
-dosyalar kod içinde aranarak doğrulandı:
+**İki kod tabanı ölçülüyor.** Bileşimleri bilerek eşitlendi (ikisi de %99+ üretim kodu):
+
+| Kod tabanı | Ne | Dosya | Parça |
+|------------|-----|-------|-------|
+| `anthropic` SDK | LLM API istemci kütüphanesi, büyük kısmı üretilmiş kod | 1099 | 4.311 |
+| **Saleor** | Açık kaynak e-ticaret (Django), elle yazılmış iş uygulaması | 1.060 | 12.076 |
+
+İkincisi, "bütün ölçümler tek repodan" sorununu kapatmak için eklendi. Seçim bilinçli: müşteri
+projelerine bir kütüphaneden çok daha yakın.
+
+**Beş soru seti, 238 soru.** Hepsinde beklenen dosyalar kod içinde aranarak işaretlendi:
 
 | Set | Soru | Tipi |
 |-----|------|------|
-| `questions_anthropic.json` | 60 (40 dev / 20 test) | Tek konum — "X nerede" |
-| `questions_akis.json` | 20 (10 dev / 10 test) | Akış — cevap 2-4 dosyada |
-| `questions_zor.json` | 26 (12 dev / 14 test) | Zor — cevap 2-3 dosyada, aralarında birbirine çok benzeyen varyantlar |
+| `questions_anthropic.json` | 80 (40 dev / 40 test) | Tek konum — "X nerede" |
+| `questions_akis.json` | 40 (10 dev / 30 test) | Akış — cevap 2-4 dosyada |
+| `questions_zor.json` | 38 (12 dev / 26 test) | Zor — benzer mekanizmaları ayırt ettiren |
+| `questions_saleor.json` | 40 (14 dev / 26 test) | Saleor — üç tip karışık |
+| `questions.json` | 40 (20 dev / 20 test) | Aracın kendi kodu |
 
-Zor setin bölünmesi özel: **`z01`-`z12` dev, `z13`-`z26` test.** İlk 12 soru kirlenmiş sayılıyor
-çünkü genişletme eksenleri onların hatalarına bakılarak tasarlandı. Son 14 soru hiçbir ayara
-bakılmadan yazıldı; rapor edilecek sayı oradan alınır.
+Zor setin bölünmesi özel: **`z01`-`z12` dev.** İlk 12 soru kirlenmiş sayılıyor çünkü genişletme
+eksenleri onların hatalarına bakılarak tasarlandı; rapor edilecek sayı `z13`-`z38`'den alınır.
 
-**Getirme (varsayılan yapılandırma, voyage + vektör, k=8):**
+**Getirme (varsayılan yapılandırma, voyage + vektör, k=8, test bölmeleri):**
 
-| Set | recall@8 | **kapsam** | MRR | modele giden parça |
-|-----|----------|------------|-----|--------------------|
-| Kolay (60) | 98% | **98%** | 0.735 | 15.5 |
-| Akış (20) | 100% | **91%** | 0.847 | 15.3 |
-| Zor — dev (12) | 100% | 94% | 0.694 | 15.4 |
-| **Zor — test (14)** | **100%** | **93%**\* | **0.847** | 15.4 |
+| Set | n | recall@8 | **kapsam** | MRR |
+|-----|---|----------|------------|-----|
+| Kolay | 40 | 92% | **92%** | 0.701 |
+| Akış | 30 | 93% | **87%** | 0.808 |
+| **Zor** | 26 | **96%** | **90%** | **0.757** |
+| **Saleor** | 26 | **100%** | **96%** | **0.573** |
+| Kendi kodu | 20 | 100% | 100% | 0.794 |
 
 Çok dosyalı sorularda asıl ölçüt **kapsam**, recall değil: "en az bir beklenen dosyayı bulduysan
 başarılı" saymak kolay — üç dosyadan birini bulmak yetiyor.
 
+**Saleor satırı aracın zayıf noktasını gösteriyor:** doğru dosyayı buluyor (recall %100) ama
+aşağıda sıralıyor (MRR 0.573 ≈ ortalama 2. sıra). 12 bin parçalık çok modüllü bir uygulamada
+doğru cevabın yanında daha çok benzer aday var. Kendi kodundaki %100/%100 ise rapor edilecek bir
+sayı değil: 571 parçalık küçük bir indekste, aracın kendi kodu.
+
 **Cevap (hepsi `claude-haiku-4-5`, tek fark bağlam):**
+
+> Bu tablo, zor setin **14 soruluk** hâlinde ölçüldü. Test bölmesi sonradan 26'ya çıkarıldı ve
+> cevap tarafı yeniden koşulmadı — ücretli olduğu için. Yani buradaki %100/%93, getirme
+> tablosundaki güncel %96/%90'ın ölçüldüğü setin yarısına ait. Genişletilmiş sette cevap ölçümü
+> hâlâ açık bir iş.
 
 | Set | Genişletmeler | parça | doğruluk | **dosya kapsamı** | uydurma | referans/cevap |
 |-----|---------------|-------|----------|-------------------|---------|----------------|
@@ -306,7 +331,7 @@ başarılı" saymak kolay — üç dosyadan birini bulmak yetiyor.
 | Zor (12, bölünmemiş hâli) | açık | 15 | 100% | 57% | 0 | 2.1 |
 | Akış (20, doğrulama) | kapalı | 8 | 90% | 79% | 1 | 2.1 |
 | Akış (20, doğrulama) | açık | 15 | 95% | 84% | 0 | 2.8 |
-| **Zor — test (14)** | açık | 15 | **100%** | **93%**\* | **0** | 2.7 |
+| Zor — test (14 soruluk hâli) | açık | 15 | **100%** | **93%**\* | **0** | 2.7 |
 
 Getirme metrikleri tek başına yeterli değil: kapsam, eklenen slot sayısıyla matematiksel olarak
 **düşemez**, yani her ekleme kendini haklı çıkarır. Kararı cevap ölçümü verdi. Son sütun o
@@ -403,6 +428,28 @@ Muhtemel sebep: **baseline zaten zayıf değildi.** Parçalar AST ile bölünüy
 deterministik bağlam etiketi taşıyor. Bu tekniğin asıl değeri sabit uzunlukta bölünmüş, bağlamsız
 parçalarda ortaya çıkıyor.
 
+### Reranking dev'de kazandı, test'te çöktü
+
+Saleor'un bölmesi zorluğa göre dengelenince dev'de zor sorular da oldu ve yeni bir şey görünür
+hâle geldi: reranking çok dosyalı zor sorularda kazanıyor.
+
+| | dev | test |
+|---|-----|------|
+| Saleor | 0.752 → **0.857** | 0.573 → **0.480** |
+| zor | 0.694 → **0.808** | — |
+| akış | 0.867 → **0.753** | — |
+
+Test bölmesinde recall %100'den %92'ye, kapsam %96'dan %87'ye düştü. Yani dev'de +0.10 kazandıran
+ayar, görmediği bölmede her metriği bozuyor. Reddedildi.
+
+Bu, **dev'de kazanıp test'te sıfır veren dördüncü fikir**. Zor setin test bölmesi bu doğrulama
+için harcanmadı: iki ayrı yerde (akış dev'i ve Saleor test'i) genellenmediği zaten görülmüştü.
+
+Yanında denenen yedi kol — çeşitlilik/dizin/import slotlarını artırmak, havuzu büyütmek, tip
+ağırlığını kapatmak, hibrit mod — üç dev bölmesinde de tam olarak **düz** çıktı ya da zarar verdi.
+Yani mevcut varsayılanlar ikinci kod tabanında da en iyisi: anthropic SDK'sında yapılan ayar
+Saleor'a taşındı.
+
 ### Reranking ile ağırlık ayarı birbirinin yerine geçiyor
 
 Reranking MRR'ı 0.702 → 0.750 çıkardı. RRF ağırlıklarını ayarlamak (bedava, API çağrısı yok)
@@ -492,6 +539,10 @@ Go, 453 kod dosyası — ölçüldüğünde sonuç belirgin şekilde düştü:
 | anthropic SDK (Python) | 93% | 0.847 |
 | Prometheus (Go) | 79% | 0.674 |
 
+> Buradaki Python satırı, zor setin **14 soruluk** hâlinde ölçüldü — o günkü sayı. Test bölmesi
+> sonradan 26'ya çıkarıldığında %90 / 0.757'ye indi. Karşılaştırmanın kendisi geçerli (ikisi de
+> aynı gün, aynı setle ölçüldü), ama bu satırı güncel tabloyla karıştırmayın.
+
 Üç şey öğretti.
 
 **İlk karşılaştırma adil değildi.** İki indeksin bileşimi çok farklıydı: anthropic SDK'sı
@@ -513,6 +564,11 @@ yorum vardı, **kayıp %100**. Düzeltildi ve getirmeyi kıpırdatmadı.
 Sonuç: çok dil desteği kaldırıldı, araç yalnızca Python indeksliyor. **Ölçülmemiş bir yetenek,
 savunulamayan bir iddiadır.** Kod git geçmişinde duruyor; geri getirilirse o dilde ölçülerek
 getirilmeli.
+
+Geriye kalan soru — *"aynı dilde başka bir repoda ne olur"* — Saleor ile cevaplandı: dil sabit
+tutulunca sonuç taşındı (recall %100, kapsam %96), ama sıralama kalitesi düştü (MRR 0.757 → 0.573).
+Yani **dil değişince başarım çöküyor, kod tabanı değişince sıralama zorlaşıyor.** İkisi ayrı
+mesele.
 
 ### Aynı hata iki kez, iki farklı kılıkta
 
@@ -563,7 +619,6 @@ görülemezdi.
 
 ```
 codeqa/
-  models.py      Chunk veri modeli
   indexer.py     Python AST sembol çıkarıcı
   docs.py        Markdown parçalayıcı
   embeddings.py  sağlayıcı arayüzü (Voyage / Ollama / hash) + disk önbelleği
@@ -573,37 +628,47 @@ codeqa/
   answer.py      Claude + tool'lar, referans doğrulama
   evaluation.py  soru seti, getirme ve cevap metrikleri
   mcp_server.py  MCP sunucusu (search_code, read_chunk, index_status)
+  models.py      Chunk veri modeli + indeksin disk biçimi (read_jsonl / write_jsonl)
   projects.py    proje kaydı, tarama, maliyet tahmini, dil işareti, duman testi
   ui.py          yerel web arayüzü sunucusu (bağımlılıksız, http.server)
   ui.html        arayüz sayfası — proje ekleme ve referansa tıklayınca kaynağı açan kısım
   cli.py         komut satırı arayüzü
 DEMO.md          müdüre gösterilecek akış, komutlar ve fallback yolları
 eval/
-  questions.json            kendi repo, 20 soru
-  questions_anthropic.json  SDK, 60 soru (tek konum, 40 dev / 20 test)
-  questions_akis.json       SDK, 20 soru (akış, 2-4 dosya, 10 dev / 10 test)
-  questions_zor.json        SDK, 26 soru (zor, 12 dev / 14 test)
+  questions.json            kendi repo, 40 soru (20 dev / 20 test)
+  questions_anthropic.json  SDK, 80 soru (tek konum, 40 dev / 40 test)
+  questions_akis.json       SDK, 40 soru (akış, 2-4 dosya, 10 dev / 30 test)
+  questions_zor.json        SDK, 38 soru (zor, 12 dev / 26 test)
+  questions_saleor.json     Saleor, 40 soru (14 dev / 26 test)
   KULLANICI_DENEYI.md       değer hipotezini ölçmek için protokol
   SORU_SETI.md              yeni bir repo için soru seti yazma rehberi
-tests/           215 birim testi — ağ ve API anahtarı gerektirmiyor
+tests/           217 birim testi — ağ ve API anahtarı gerektirmiyor
 data/, runs/     indeksler, vektörler, proje kaydı, koşu kayıtları (git'e girmez)
+repos/           ölçüm için klonlanan dış repolar (git'e girmez)
 ```
 
 ## Sıradaki adımlar
 
-1. **İkinci bir Python kod tabanı.** Çok dil desteği kaldırıldı ama "bütün ölçümler tek repodan"
-   sorunu duruyor. Farklı bir Python projesi (django, requests, bir iş uygulaması) bu boşluğu dil
-   değiştirmeden kapatır — ve karşılaştırma da adil olur, çünkü indeks bileşimi eşitlenebilir.
+1. **Kullanıcı deneyi.** Projenin ölçülmemiş tek iddiası: *"adapte olma süresini kısaltır."*
+   Getirme ve cevap doğruluğu ölçüldü, zaman kazancı ölçülmedi — çünkü tek başına ölçülemez.
+   Protokol hazır: [eval/KULLANICI_DENEYI.md](eval/KULLANICI_DENEYI.md). Kritik kural: soru önce
+   yazılır, sonra araca sorulur. İki kişi, yarım gün.
 
-2. **Doküman ağırlıklandırmasını ölçmek.** Doküman parçalarının kod sonuçlarını bastırdığı
+2. **Yeni eklenen 92 soru insan gözünden geçmeli.** Beş setin test bölmeleri LLM tarafından
+   yazılmış sorularla büyütüldü. Yöntem kurallara uyduruldu (sorular kod okunmadan yazıldı,
+   etiketler grep ile kondu — codeqa ile değil), ama zor sette ölçüldü: insanın yazdığı 14 soru
+   %100/0.847, LLM'in yazdığı 12 soru %92/0.653 veriyor. Güven aralıkları örtüştüğü için fark
+   ayırt edilemiyor, ama gerçek olabilir. Gözden geçirilirken **setin tamamı** geçirilmeli,
+   sadece kaçırılanlar değil (Kural 3), ve düzeltmeler **ölçüm düzeltmesi** diye işaretlenmeli.
+
+3. **Genişletilmiş sette cevap ölçümü.** Getirme tarafı 238 soruya çıktı; cevap tarafı hâlâ zor
+   setin 14 soruluk hâlinde ölçülmüş durumda. Ücretli olduğu için yeniden koşulmadı.
+
+4. **Doküman ağırlıklandırmasını ölçmek.** Doküman parçalarının kod sonuçlarını bastırdığı
    görüldü (bkz. Öğrenilenler). Bu indekste doküman payı yalnızca %0,4 olduğu için etkisi
    ölçülemiyor; doküman ağırlıklı bir repoda ölçülmeli. `--no-docs` zaten var.
 
-3. **Zor setin test bölmesi büyütülmeli.** Şu an 14 soru; bir soru ~3.5 puan ediyor, yani tek bir
-   soruluk oynama gürültü seviyesinde. Ayrıca her yeni deneme test'ten soru harcıyor (aşağıya
-   bakın) — bölme bir bütçe ve şu an dar.
-
-4. **`d36` etiketi gözden geçirilmeli.** "Zamanlanmış çalıştırmalar hangi kaynak üzerinden
+5. **`d36` etiketi gözden geçirilmeli.** "Zamanlanmış çalıştırmalar hangi kaynak üzerinden
    yönetiliyor" sorusunun etiketi `resources/beta/deployments.py`, ama arama
    `resources/beta/deployment_runs.py`'yi getiriyor ve ikisi de savunulabilir. Düzeltilirse
    **ölçüm düzeltmesi olarak işaretlenmeli**, sistem kazancı olarak değil.
@@ -622,8 +687,14 @@ iyi bir alışveriş görünmedi.
 
 ### Kapanan maddeler
 
-- **Akış kapsamını %80'in üzerine çıkarmak** — test bölmesinde %91.
-- **Cevap tarafını zor sette ölçmek** — yapıldı, test bölmesinde %93 dosya kapsamı.
+- **İkinci bir Python kod tabanı** — Saleor eklendi (açık kaynak e-ticaret, Django; 1.060 dosya,
+  12.076 parça). İndeks bileşimi anthropic SDK'sıyla eşitlendi. Test bölmesinde %100 recall,
+  %96 kapsam, MRR 0.573. "Bütün ölçümler tek repodan" sorunu kapandı.
+- **Test bölmeleri büyütülmeli** — 44'ten 142 soruya çıktı. Zor sette bir soru artık %7 yerine
+  %4 ediyor ve güven aralığı 22 puandan 13'e indi. Sayılar düştü: araç değişmedi, eski sayılar
+  küçük örneklem iyimserliğiydi.
+- **Akış kapsamını %80'in üzerine çıkarmak** — test bölmesinde %87 (30 soruluk hâlinde).
+- **Cevap tarafını zor sette ölçmek** — yapıldı, 14 soruluk bölmede %93 dosya kapsamı.
 - **`types/` gürültüsü** — 60 soruluk sette bulunamayan dört sorunun üçü çeşitlilik slotlarıyla
   çözüldü. İlginç olan, `types/` parçalarının payının **artmış** olması (%15 → %21): sorun tip
   tanımlarının varlığı değil, gerçek cevaba yer kalmamasıymış.

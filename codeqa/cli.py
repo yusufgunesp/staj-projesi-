@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import json
 import os
 import sys
 import time
@@ -16,7 +15,7 @@ from .answer import DEFAULT_MODEL
 from .docs import index_docs
 from .embeddings import CachedEmbedder, EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
-from .models import Chunk
+from .models import read_jsonl, write_jsonl
 from .projects import DEFAULT_REGISTRY
 from .search import (
     DIRECTORY_SLOTS,
@@ -29,25 +28,15 @@ from .search import (
 DEFAULT_OUTPUT = Path("data/chunks.jsonl")
 
 
-def _write_jsonl(chunks: list[Chunk], output: Path) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as handle:
-        for chunk in chunks:
-            handle.write(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n")
-
-
-def _write_records(records: list[dict], output: Path) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
 def _read_jsonl(path: Path) -> list[dict]:
+    """Okuma + komut satırına uygun hata mesajı.
+
+    Ham okuma `models.read_jsonl`'de; buradaki tek fark, indeks yoksa
+    kullanıcıya ne yapacağını söyleyip çıkması.
+    """
     if not path.exists():
         sys.exit(f"İndeks bulunamadı: {path} — önce `python -m codeqa index <repo>` çalıştırın.")
-    with path.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+    return read_jsonl(path)
 
 
 def cmd_index(args: argparse.Namespace) -> int:
@@ -61,7 +50,7 @@ def cmd_index(args: argparse.Namespace) -> int:
         chunks.extend(doc_chunks)
 
     output = Path(args.output)
-    _write_jsonl(chunks, output)
+    write_jsonl(chunks, output)
 
     print(f"Repo      : {Path(args.repo).resolve()}")
     print(f"Dosya     : {stats.files_scanned} tarandı, {stats.files_failed} atlandı")
@@ -260,7 +249,7 @@ def cmd_contextualize(args: argparse.Namespace) -> int:
     enriched, generated = generator.enrich(records, progress=True)
 
     output = Path(args.output or args.index)
-    _write_records(enriched, output)
+    write_jsonl(enriched, output)
     print(f"Parça     : {len(records)}")
     print(f"Yeni cümle: {generated}")
     print(f"Çıktı     : {output}")

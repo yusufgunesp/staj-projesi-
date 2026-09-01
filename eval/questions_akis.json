@@ -1,7 +1,7 @@
 {
   "_aciklama": "ZOR SET — akış (multi-hop) soruları. Mevcut 60 soruluk set tek konumlu 'X nerede' tipindeydi ve cevap doğruluğu %100'e vurdu, yani iyileştirme ölçemez hâle geldi. Bu set projenin asıl vaadini ölçüyor: bir akışın nerede başlayıp nereden geçtiğini takip etmek. Her sorunun cevabı 2-4 dosyaya yayılıyor; `covered` metriği kaç tanesine ulaşıldığını ölçüyor. Beklenen dosyalar kodda aranarak doğrulandı.",
   "repo": ".venv/lib/python3.14/site-packages/anthropic",
-  "index": "data/anthropic_ctx.jsonl",
+  "index": "data/anthropic.jsonl",
   "questions": [
     {
       "id": "a01",
