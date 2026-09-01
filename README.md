@@ -7,7 +7,7 @@ anında kontrol edilebiliyor.
 ```
 $ codeqa ask "istek kaç kez yeniden deneniyor?"
 
-Varsayılan 2 (`_constants.py:12`). Karar `_base_client.py:842`'deki
+Varsayılan 2 (`_constants.py:10`). Karar `_base_client.py:842`'deki
 _should_retry'da veriliyor: 408, 409, 429 ve 5xx yeniden deneniyor.
 Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 ```
@@ -66,10 +66,66 @@ Diğer komutlar:
 | Komut | Ne yapar |
 |-------|----------|
 | `search` | Cevap üretmeden sadece arama sonuçlarını gösterir |
+| `ui` | Yerel web arayüzünü açar (aşağıda) |
 | `eval` | Soru seti üzerinde doğruluk ölçer |
 | `contextualize` | Parçalara LLM ile bağlam cümlesi ekler |
 | `serve` | MCP sunucusu olarak çalışır (Claude Code entegrasyonu) |
 | `stats` / `grep` | İndeksi inceleme araçları |
+
+### Web arayüzü
+
+```bash
+codeqa ui
+```
+
+`127.0.0.1:8765`'i açıyor. Bayrak gerekmiyor: **projeler arayüzden ekleniyor.**
+
+**Proje ekleme iki adımlı**, çünkü ikinci adım para harcıyor:
+
+1. **Tara** — repo yolunu ver. İndeksler, bileşimini (kod / test / doküman oranı) ve maliyet
+   tahminini gösterir. Bedava, yerel, ağ yok. Doküman oranı yüksekse uyarır: markdown
+   parçalarının kod sonuçlarını bastırdığı ölçüldü (MRR 0.406 → 0.586).
+2. **Devam et** — vektörleştirir, ilerleme çubuğuyla. Zaten önbellekte olan parçalar için ödeme
+   yok; ekranda kaçının bedava geldiği yazıyor.
+
+Sonrasında projeler üstteki listeden seçiliyor. Aktif proje sunucuda tutulmuyor, her istek hangi
+projeyi kastettiğini kendi söylüyor — iki sekme iki farklı projeye bakabilir.
+
+**Proje eklenirken iki ucuz kontrol koşuyor. İkisi de ölçüm değil, arayüz bunu böyle
+etiketliyor:**
+
+*Dil işareti* — parçaların yüzde kaçının Türkçe metin taşıdığına bakıp mod öneriyor. Dayanağı
+ölçülmüş mekanizma: BM25 ancak sorunun kelimeleri kodda geçtiğinde tutunuyor, sorular da Türkçe.
+İki kod tabanında ölçülen ayrım keskin (kendi repo %66 → hibrit kazanıyor, anthropic SDK %1 →
+hibrit çöküyor) ama eşik iki noktadan seçildi, doğrulanmadı.
+
+*Duman testi* — indeksten 25 sembol seçip adıyla arıyor. Cevaplayabildiği tek soru "indeks ve
+arama hiç çalışıyor mu"; **doğruluk değil**, çünkü sembol adıyla sembol bulmak neredeyse `grep` ve
+bu sorular anahtar kelime aramasını sistematik olarak kayırıyor — mod seçmek için kullanılamaz.
+Örneklem `chunk_weight` ile süzülüyor: metotsuz tip sınıfları arama katmanı tarafından bilerek
+geri itiliyor, onları sorup "bulunamadı" saymak kasıtlı davranışı arıza gibi gösterirdi (bu
+süzgeç eklenmeden önce anthropic SDK'sında sonuç 17/25 çıkıyordu, sonra 23/25). Bedava da değil:
+25 sorgu = 25 embedding çağrısı, ~7 saniye.
+
+Gerçek bir sayı için o repoya soru seti yazmak gerekiyor; arayüz bunu söylüyor ve rehberi
+gösteriyor: [eval/SORU_SETI.md](eval/SORU_SETI.md).
+
+**Referansı tek tıkla doğrulama.** Terminalde `_base_client.py:818` görünce kontrol etmek için
+ayrı bir `sed` komutu gerekiyor; arayüzde referansa tıklayınca dosyanın o satırı, hedef satır
+vurgulanmış hâlde altında açılıyor. Aracın bütün iddiası "kaynak gösteriyorum, kontrol et"
+olduğuna göre kontrolü ucuzlatmak arayüzün asıl işi.
+
+Eski çağrı biçimi de çalışıyor: `-i` ve `--repo` verilirse o indeks açılışta proje olarak
+kaydediliyor.
+
+Anahtar yoksa cevaplama düğmesi kapanıyor, arama çalışmaya devam ediyor. Sunucu yalnızca
+`127.0.0.1`'e bağlanıyor ve dosya okuma repo köküne hapsedilmiş durumda (cevaplama katmanıyla
+aynı kontrol, `resolve_in_repo`).
+
+**Bağımlılık eklenmedi** — `http.server` yeterli. Bir dönem "exe yapalım mı" diye soruldu;
+yapılmadı, çünkü API anahtarları binary'ye gömülemiyor (anahtarsız `hash`'e düşüyor, o da
+[dil farkı bulgusu](#hibrit-arama-bedava-kazanç-değil) yüzünden Türkçe soruda çalışmıyor) ve
+`.exe` Windows demek. Yerel sunucu ikisini de es geçiyor.
 
 **Desteklenen dil: Python.** Yerleşik `ast` ile ayrıştırılıyor; başka uzantılar sessizce
 atlanıyor.
@@ -517,6 +573,9 @@ codeqa/
   answer.py      Claude + tool'lar, referans doğrulama
   evaluation.py  soru seti, getirme ve cevap metrikleri
   mcp_server.py  MCP sunucusu (search_code, read_chunk, index_status)
+  projects.py    proje kaydı, tarama, maliyet tahmini, dil işareti, duman testi
+  ui.py          yerel web arayüzü sunucusu (bağımlılıksız, http.server)
+  ui.html        arayüz sayfası — proje ekleme ve referansa tıklayınca kaynağı açan kısım
   cli.py         komut satırı arayüzü
 DEMO.md          müdüre gösterilecek akış, komutlar ve fallback yolları
 eval/
@@ -525,8 +584,9 @@ eval/
   questions_akis.json       SDK, 20 soru (akış, 2-4 dosya, 10 dev / 10 test)
   questions_zor.json        SDK, 26 soru (zor, 12 dev / 14 test)
   KULLANICI_DENEYI.md       değer hipotezini ölçmek için protokol
-tests/           184 birim testi — ağ ve API anahtarı gerektirmiyor
-data/, runs/     üretilen çıktılar (git'e girmez)
+  SORU_SETI.md              yeni bir repo için soru seti yazma rehberi
+tests/           215 birim testi — ağ ve API anahtarı gerektirmiyor
+data/, runs/     indeksler, vektörler, proje kaydı, koşu kayıtları (git'e girmez)
 ```
 
 ## Sıradaki adımlar

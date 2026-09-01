@@ -27,6 +27,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["codeqa"]
 
+# `codeqa ui` sayfası veri dosyası olarak duruyor; belirtilmezse wheel'a girmiyor
+# ve kurulu paketten arayüz açılamıyor.
+[tool.setuptools.package-data]
+codeqa = ["ui.html"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

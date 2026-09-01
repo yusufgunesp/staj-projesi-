@@ -7,6 +7,7 @@ import atexit
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +17,14 @@ from .docs import index_docs
 from .embeddings import CachedEmbedder, EmbeddingCache, embed_records, get_embedder
 from .indexer import DEFAULT_EXCLUDES, index_repo
 from .models import Chunk
-from .search import DIRECTORY_SLOTS, DIVERSITY_SLOTS, REFERENCE_SLOTS, HybridSearch
+from .projects import DEFAULT_REGISTRY
+from .search import (
+    DIRECTORY_SLOTS,
+    DIVERSITY_SLOTS,
+    REFERENCE_SLOTS,
+    HybridSearch,
+    resolve_mode,
+)
 
 DEFAULT_OUTPUT = Path("data/chunks.jsonl")
 
@@ -90,12 +98,23 @@ def cmd_grep(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_env() -> None:
-    """.env dosyasındaki anahtarları ortama alır (varsa)."""
+def _load_env(start: Path | None = None) -> None:
+    """.env dosyasındaki anahtarları ortama alır (varsa).
+
+    `start` verilirse `.env` o dizinden yukarı doğru aranıyor, verilmezse
+    çalışma dizininden. Ayrım `serve` için var: MCP sunucusunun çalışma dizini
+    kendi seçimi değil, onu başlatan istemcinin.
+    """
     try:
         from dotenv import load_dotenv
     except ImportError:  # pragma: no cover - opsiyonel bağımlılık
         return
+    if start is not None:
+        for directory in [start, *start.parents]:
+            candidate = directory / ".env"
+            if candidate.exists():
+                load_dotenv(candidate)
+                return
     load_dotenv()
 
 
@@ -206,10 +225,23 @@ def cmd_ask(args: argparse.Namespace) -> int:
     if answer.unverified_citations:
         print(f"    ⚠ doğrulanamayan referans: {', '.join(answer.unverified_citations)}")
     if answer.usage:
-        cached = answer.usage.get("cache_read_input_tokens", 0)
+        u = answer.usage
+        # Önbellek açık olduğu için girdinin neredeyse tamamı
+        # `cache_creation_input_tokens`'a düşüyor; yalnızca `input_tokens`
+        # basılınca ekranda "girdi 3" görünüyordu ve maliyet iddiasıyla
+        # çelişiyordu. Haiku 4.5: girdi $1 / çıktı $5 / yazma 1.25x / okuma 0.1x (MTok)
+        written = u.get("cache_creation_input_tokens", 0)
+        cached = u.get("cache_read_input_tokens", 0)
+        cost = (
+            u.get("input_tokens", 0) * 1e-6
+            + written * 1.25e-6
+            + cached * 0.1e-6
+            + u.get("output_tokens", 0) * 5e-6
+        )
         print(
-            f"    token: girdi {answer.usage.get('input_tokens', 0)}, "
-            f"çıktı {answer.usage.get('output_tokens', 0)}, önbellekten {cached}"
+            f"    token: girdi {u.get('input_tokens', 0):,}, "
+            f"önbellek yazma {written:,}, okuma {cached:,}, "
+            f"çıktı {u.get('output_tokens', 0):,}  (~${cost:.4f})"
         )
     return 0
 
@@ -262,14 +294,92 @@ def cmd_serve(args: argparse.Namespace) -> int:
     """
     from .mcp_server import build_server
 
-    _load_env()
+    # Tek cwd'ye güvenemeyen komut bu: istemci sunucuyu kendi çalışma dizininde
+    # başlatıyor, dolayısıyla `data/embeddings` ve `.env` gibi göreli yollar
+    # tutmayabiliyor. İkisi de indeksin yanından çözülüyor — önbellek zaten
+    # indekse ait, `.env` de indeksi taşıyan projeye.
+    index_path = Path(args.index).resolve()
+    _load_env(index_path.parent)
     server = build_server(
-        index_path=Path(args.index),
+        index_path=index_path,
         provider=args.provider,
         model=args.model,
         mode=resolve_mode(args.mode, args.provider),
+        cache_dir=index_path.parent / "embeddings",
     )
     server.run(transport="stdio")
+    return 0
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Yerel web arayüzünü açar.
+
+    Yalnızca `127.0.0.1`'e bağlanıyor: indeksler, kaynak kodu ve API anahtarları
+    bu süreçten geçiyor, sunucuyu ağa açmanın hiçbir gerekçesi yok.
+
+    Projeler arayüzden ekleniyor; `-i` / `--repo` verilirse o indeks açılışta
+    proje olarak kaydediliyor. Bu ikisi zorunlu değil — kayıt boşsa arayüz
+    "proje ekle" ekranıyla açılıyor.
+    """
+    import webbrowser
+
+    from .projects import Project, load_projects, save_projects, slugify, upsert
+    from .ui import UIServer
+
+    _load_env()
+    registry = Path(args.registry)
+    server = UIServer(
+        ("127.0.0.1", args.port),
+        registry=registry,
+        model=args.model_name,
+        context_size=args.context,
+        data_dir=Path(args.index).parent if args.index else Path("data"),
+    )
+
+    if args.index:
+        # Komut satırından indeks verildiyse kayda al: eski çağrı biçimi
+        # (ve DEMO.md'deki komut) çalışmaya devam etsin.
+        repo = Path(args.repo).expanduser().resolve()
+        name = args.name or Path(args.index).stem
+        existing = load_projects(registry)
+        records = _read_jsonl(Path(args.index))
+        previous = next((p for p in existing if p.id == slugify(name)), None)
+        project = Project(
+            id=slugify(name),
+            name=name,
+            repo=str(repo),
+            index=str(Path(args.index)),
+            provider=args.provider,
+            model=args.model,
+            mode=args.mode,
+            chunks=len(records),
+            files=len({r["path"] for r in records}),
+            added=time.strftime("%Y-%m-%d %H:%M"),
+            # Aynı proje daha önce arayüzden eklendiyse kontrol sonuçları
+            # duruyor; bayrakla açmak onları silmemeli.
+            checks=previous.checks if previous else {},
+        )
+        server.projects = upsert(existing, project)
+        save_projects(server.projects, registry)
+
+    url = f"http://127.0.0.1:{server.server_address[1]}"
+    print(f"Arayüz  : {url}")
+    print(f"Kayıt   : {registry} ({len(server.projects)} proje)")
+    for project in server.projects:
+        print(f"  · {project.name}  ({project.repo})")
+    if not server.projects:
+        print("  (kayıt boş — arayüzden 'Proje ekle' ile başlayın)")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("Uyarı   : ANTHROPIC_API_KEY yok — cevaplama kapalı, arama çalışıyor.")
+    print("Durdurmak için Ctrl+C.")
+    if not args.no_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nKapatıldı.")
+    finally:
+        server.server_close()
     return 0
 
 
@@ -358,27 +468,6 @@ def _add_embedding_args(parser: argparse.ArgumentParser) -> None:
         help="Embedding sağlayıcısı (varsayılan: hash — anahtarsız, anlamsal arama yapmaz)",
     )
     parser.add_argument("--model", default=None, help="Sağlayıcıya özel embedding modeli")
-
-
-def resolve_mode(mode: str | None, provider: str) -> str:
-    """Mod verilmediyse sağlayıcıya göre seçer.
-
-    İkisi bağımsız değil ve yanlış eşleşme sessizce kalite kaybettiriyor:
-
-    - `hash` anahtarsız yer tutucu, anlamsal arama yapmıyor. Onunla vektör
-      araması zayıf kalıyor ve BM25 tarafı taşıyor (kendi repo, 20 soru:
-      hash+vector recall %65 / MRR 0.230, hash+hybrid %90 / 0.416).
-    - Gerçek bir sağlayıcıda tablo tersine dönüyor: voyage ile büyük İngilizce
-      repoda saf vektör hibriti açık ara geçiyor (akış kapsamı 0.750 vs 0.683).
-
-    Eskiden varsayılan sabit `hybrid`'di ve kullanıcının `--provider voyage`
-    verirken `--mode vector` de vermesi gerekiyordu; vermezse aracın kötü
-    çalıştığını sanıyordu. README bunu uyarı olarak belgeliyordu — uyarmak
-    yerine düzeltmek daha iyi.
-    """
-    if mode:
-        return mode
-    return "hybrid" if provider == "hash" else "vector"
 
 
 def _add_retrieval_args(parser: argparse.ArgumentParser, with_mode: bool = True) -> None:
@@ -532,6 +621,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Alaka sırasına göre verilecek parça sayısı (çeşitlilik slotları buna eklenir)",
     )
     ask_parser.set_defaults(func=cmd_ask)
+
+    ui_parser = subparsers.add_parser("ui", help="Yerel web arayüzünü aç (tarayıcıda)")
+    ui_parser.add_argument("--repo", default=".", help="Açılışta kaydedilecek projenin dizini")
+    # `-i` burada zorunlu değil: projeler arayüzden ekleniyor. Verilirse o
+    # indeks açılışta kayda giriyor — eski çağrı biçimi bozulmasın diye.
+    ui_parser.add_argument("-i", "--index", default=None, help="Açılışta kaydedilecek indeks")
+    ui_parser.add_argument("--name", default=None, help="Kaydedilecek projenin adı")
+    ui_parser.add_argument(
+        "--registry", default=str(DEFAULT_REGISTRY), help="Proje kaydı dosyası"
+    )
+    _add_embedding_args(ui_parser)
+    _add_retrieval_args(ui_parser)
+    ui_parser.add_argument(
+        "--model-name", default=DEFAULT_MODEL, dest="model_name", help="Cevaplayan Claude modeli"
+    )
+    ui_parser.add_argument(
+        "--context", type=int, default=8, help="Alaka sırasına göre verilecek parça sayısı"
+    )
+    ui_parser.add_argument("--port", type=int, default=8765, help="Dinlenecek port")
+    ui_parser.add_argument(
+        "--no-browser", action="store_true", help="Tarayıcıyı kendiliğinden açma"
+    )
+    ui_parser.set_defaults(func=cmd_ui)
 
     eval_parser = subparsers.add_parser("eval", help="Soru seti üzerinde doğruluk ölç")
     eval_parser.add_argument(

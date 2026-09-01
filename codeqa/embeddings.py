@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -412,11 +413,15 @@ def embed_records(
     embedder: Embedder,
     cache: EmbeddingCache | None = None,
     progress: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[np.ndarray, int]:
     """Parça kayıtlarını vektörleştirir; önbellekte olanları atlar.
 
     Kayıt sırasıyla hizalı (n, dim) matris ve kaç parçanın yeniden hesaplandığı
     döner.
+
+    `on_progress(biten, toplam)` her grup sonrası çağrılıyor. Web arayüzü için:
+    4311 parçalık bir repo dört dakika sürüyor ve donmuş bir çubuk gösterilemez.
     """
     if not records:
         return np.zeros((0, embedder.dimension), dtype=np.float32), 0
@@ -430,6 +435,8 @@ def embed_records(
 
     if missing and progress:
         print(f"{len(missing)} parça embed ediliyor ({embedder.name})...")
+    if on_progress:
+        on_progress(0, len(missing))
 
     # Önbellek grup grup diske yazılıyor. Hız limitli bir sağlayıcıda koşu
     # dakikalar sürebiliyor; ortada bir yerde patlarsa o ana kadarki iş
@@ -442,5 +449,7 @@ def embed_records(
         for position, index in enumerate(group):
             cache.put(keys[index], vectors[position])
         cache.save()
+        if on_progress:
+            on_progress(min(start + group_size, len(missing)), len(missing))
 
     return np.stack([cache.get(key) for key in keys]), len(missing)

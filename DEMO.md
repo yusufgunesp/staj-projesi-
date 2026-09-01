@@ -1,6 +1,7 @@
 # Demo akışı
 
-**Süre:** 10-12 dakika · **Dinleyici:** yazılımcı olmayabilir · **Toplam maliyet:** ~2 sent
+**Süre:** ~13 dakika, ikinci canlı soruyla ~15 · **Dinleyici:** yazılımcı olmayabilir ·
+**Toplam maliyet:** ~5 sent (ölçüldü: canlı soru başına 0,6-2,2 sent, geri kalanı bedava)
 
 Her adımda önce **ne soracağın**, sonra **ne söyleyeceğin** var. Komutlar birebir kopyalanabilir.
 
@@ -28,8 +29,15 @@ demo orada durur. Tek satırlık kontrol (bir kuruşun altında):
 .venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); import anthropic; print('kredi OK' if anthropic.Anthropic().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
 ```
 
+**MCP'yi bir kez dene** (§5 canlı yapılacaksa): Claude Code'u bu dizinde aç, `codeqa`
+sunucusunun bağlandığını gör. Bağlanmıyorsa §5'i yapılandırma göstererek geç.
+
 Terminali büyüt, yazı tipini büyüt. Tarayıcıda `README.md` açık dursun — soru gelirse
 oradan ölçüm tablolarını gösterirsin.
+
+> **Uyarı:** `data/` ve `runs/` git'e girmiyor (üretilen veri). İndeks ve embedding'ler —
+> 7 MB + 127 MB — yalnızca bu makinede. Demoyu başka makineden yapacaksan önce kopyala;
+> sıfırdan üretmek indeksleme + embedding koşusu demek.
 
 ---
 
@@ -46,27 +54,61 @@ Burada henüz bir şey çalıştırma. Problemi kur, sonra göster.
 
 ---
 
-## 2. Canlı soru (2 dakika) — demonun kalbi
+## 2. Canlı soru (2 dakika, ikinci soruyla 4) — demonun kalbi
 
-Kullanılan kod tabanı: **Anthropic'in kendi Python SDK'sı, 1097 kod dosyası.** Aracın hiç
-görmediği, üçüncü taraf bir repo. (`stats` komutu 1099 diyor — ikisi markdown dokümanı.)
+Kullanılan kod tabanı: **Anthropic'in kendi Python SDK'sı, 1097 kod dosyası.** Aracın kendi
+kodu değil, üçüncü taraf bir repo. (`stats` komutu 1099 diyor — ikisi markdown dokümanı.)
 
 ```bash
 .venv/bin/python -m codeqa ask "bir istek 429 alırsa kaç kez ve ne kadar beklenerek yeniden deneniyor?" -i data/anthropic.jsonl --provider voyage --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
 ```
 
-**Süre: ~6 saniye.** Cevap `_constants.py:3`, `_base_client.py:818` gibi referanslar içerir.
+**Süre: 6-13 saniye** (dört koşuda ölçüldü). Cevap `_constants.py` ve `_base_client.py`
+referansları içerir. Bazı koşularda ekranda `read_file(...)` / `search_symbol(...)` satırları
+görünüyor: model bağlamda eksik kalanı görüp dosyaya kendisi gidiyor. Uzun süren koşular bunlar
+— sessiz kalma, göster:
 
-Sonra **referanslardan birini canlı aç**:
+> "Şu an bağlamda bulamadığı bir şey için dosyayı kendisi açtı. Getirme mükemmel olmak
+> zorunda değil, eksiği kapatacak yolu var."
+
+Sonra **referanslardan birini canlı aç.** Açacağın referans `_base_client.py:818` olsun —
+dört koşunun dördünde de çıktı ve gösterdiği şey tam isabet:
 
 ```bash
 sed -n '818,822p' .venv/lib/python3.14/site-packages/anthropic/_base_client.py
 ```
 
+`_constants.py` referansının satır numarası koşudan koşuya değişiyor (parça başlangıcını
+gösteriyor, bazen boş satıra denk geliyor). Ekranda onu açma, `_base_client.py:818`'i aç.
+
 > "Araç 818. satırı gösterdi. Bakıyoruz: `_calculate_retry_timeout`. Yani uydurmuyor,
 > gerçekten oradan okumuş."
 
 Bu an demonun en ikna edici anı. Acele etme.
+
+### Bu soru ölçüm setimde var — söyle ve ikinci bir soru sor
+
+Yukarıdaki soru `questions_akis.json`'daki `a02`'nin neredeyse birebir aynısı ve `a02`
+**dev** bölmesinde, yani ayar yaparken baktığım yarıda. Provada çalıştığından emin olduğun
+için onu seçtin; bunda sorun yok, ama **söylemezsen sahnelenmiş görünür** — üstelik §3'te
+"ayar yaptığın sette rapor verilmez" diyeceksin.
+
+> "Şunu da söyleyeyim: bu soru benim ölçüm setimde var, hem de ayar yaparken baktığım
+> yarıda. Bilerek onu seçtim, çünkü karşınızda çalışacağından emin olmak istedim. O yüzden
+> hiç bakmadığım yarıdan bir tane daha soralım."
+
+Sonra bunu çalıştır — `a17`, akış setinin **test** bölmesinden, hiçbir ayarın görmediği:
+
+```bash
+.venv/bin/python -m codeqa ask "akış sırasında bağlantı kapanırsa kaynaklar nasıl serbest bırakılıyor?" -i data/anthropic.jsonl --provider voyage --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
+```
+
+**Süre: 7-8 saniye** (üç koşuda ölçüldü). Cevap `_streaming.py`'ı gösteriyor; üç koşunun
+üçünde de doğru çıktı, ama referans satırları koşudan koşuya değişiyor — canlı açacaksan
+cevabın o an yazdığı satırı aç.
+
+Vaktin dar değilse bu ikinci soruyu atlama. Demoya iki dakika ekliyor, karşılığında
+"ölçtüğü soruyu gösteriyor" itirazını tamamen kapatıyor.
 
 ---
 
@@ -88,11 +130,38 @@ olduğu kodda aranarak doğrulandı.
 **dev/test ayrımı var.** Ayarlar yalnızca dev yarısında denenir, rapor edilen sayı hiç
 dokunulmamış test yarısından alınır.
 
-**Bunun neden önemli olduğunun canlı örneği var.** Bugün üç iyileştirme denendi; üçü de
-dev'de kazandı, üçü de test'te sıfır verdi. Ayrım olmasaydı üçü de "iyileştirme" diye
-raporlanacaktı.
+**Bunun neden önemli olduğunun canlı örneği var.** Geliştirme sırasında bir günde üç
+iyileştirme denendi; üçü de dev'de kazandı, üçü de test'te sıfır verdi. Ayrım olmasaydı
+üçü de "iyileştirme" diye raporlanacaktı.
 
 > "Yani elimdeki sayı, kendimi kandırmadığımı kontrol ederek elde edilmiş bir sayı."
+
+### Ekranda görünüp de anlatılmazsa aleyhine çalışacak iki şey
+
+Bu ikisini **sen söyle**, sorulmasını bekleme. İkisi de aslında bölümün lehine.
+
+**Güven aralığı çıktının içinde yazıyor:** `recall@k : 100% (%95 GA: 78%-100%, n=14)`.
+
+> "Yanındaki aralığı da görüyorsunuz: 14 soruyla %100 demek, gerçek başarımın %78'in
+> üstünde olduğunu söylemek demek. Sayıyı olduğundan büyük göstermemek için aralığı
+> raporun içine koydum. Test bölmesini büyütmek listemde duruyor — yarım günlük iş."
+
+**Bir satırda `✓ z16: sıra 9` yazıyor, oysa `-k 8` verdik.** Çelişki değil:
+
+> "İlk 8 alaka sırasına göre geliyor, sonra üç eksende parça ekleniyor — liste 8'den
+> ~15'e uzuyor, ama hiçbir şey elenmiyor. z16 o eklenenlerin içinde yakalandı. Yani
+> 'recall@8' aslında modele giden listenin tamamı üzerinden; eleme yapan bir sürüm de
+> denendi, sembol isabetini düşürdüğü için kabul edilmedi."
+
+### Ve ölçmediğim şey
+
+> "Bütün bu sayılar tek bir kod tabanından: Anthropic'in Python SDK'sı. Üç soru seti, 106
+> soru, ama tek repo. İkinci bir Python projesinde ölçmek listemin ilk maddesi — yarım
+> günlük, bedava iş. O ölçüm yapılana kadar bu sayıların ne kadar genellendiğini
+> bilmiyorum."
+
+Bunu söylemek sayıyı zayıflatmıyor, bölümün tezini tamamlıyor: rapor edilen tek şey
+ölçülen şey.
 
 ---
 
@@ -121,21 +190,27 @@ raporlanacaktı.
 > çalışıyor, yani geliştirici zaten kullandığı yerden — Claude Code'un içinden —
 > soruyor."
 
-Claude Code açıksa canlı sor. Değilse yapılandırmayı göster — sunucunun konuştuğu
-protokol düzeyinde doğrulandı (`initialize` → `tools/list` → `tools/call`, üç araç da
-yanıt veriyor):
+Sunucu proje kökündeki `.mcp.json` ile kayıtlı, yani **Claude Code'u bu dizinde açtığında
+`codeqa` hazır geliyor.** Canlı sor; yapılandırmayı da göstereceksen dosya bu:
 
 ```json
 {
   "mcpServers": {
     "codeqa": {
       "command": "/Users/yusufgunes/Desktop/staj/.venv/bin/python",
-      "args": ["-m", "codeqa", "serve", "-i", "data/anthropic.jsonl", "--provider", "voyage"],
-      "cwd": "/Users/yusufgunes/Desktop/staj"
+      "args": ["-m", "codeqa", "serve",
+               "-i", "/Users/yusufgunes/Desktop/staj/data/anthropic.jsonl",
+               "--provider", "voyage"]
     }
   }
 }
 ```
+
+Üç araç sunuluyor: `search_code`, `read_chunk`, `index_status`. Protokol düzeyinde
+doğrulandı (`initialize` → `tools/list` → `tools/call`; arama 0,9 saniyede dönüyor).
+
+**Demodan önce bir kez dene.** Claude Code'u bu dizinde aç ve `codeqa` sunucusunun
+bağlandığını gör; bağlanmadıysa §5'i canlı yapma, yapılandırmayı göstermekle yetin.
 
 > "Cevaplama tarafını bilerek sunmuyorum. Claude Code zaten bir dil modeli; ona ikinci
 > bir modelin cevabını vermek yerine ham arama sonuçlarını veriyorum. Hem ucuz hem daha
@@ -175,27 +250,63 @@ olur**, çünkü iki dilin sonucu birbirini öngörmedi.
 **Yerel model zorunluluk mu, yoksa seçenek mi?** Mimari her iki cevaba da hazır ve yerel
 seçeneğin kalite maliyeti ölçüldü. Cevap, varsayılan yapılandırmayı belirler.
 
+**Yarım gün kullanıcı denemesi için birinizin vaktini alabilir miyim?** Bu projede
+ölçülmemiş tek iddia şu: "adapte olma süresini kısaltır". Getirme ve cevap doğruluğunu
+ölçtüm, zaman kazancını ölçmedim — çünkü kendi kendime ölçemem. Protokol hazır
+(`eval/KULLANICI_DENEYI.md`); kritik kural, sorunun önce yazılıp sonra araca sorulması.
+İki kişi, yarım gün.
+
 ---
 
 ## Bir şeyler ters giderse
 
 | Durum | Ne yap |
 |-------|--------|
-| `ask` yavaş ya da hata veriyor | `search` komutuna geç — ücretsiz, yarım saniye, referansları yine gösterir |
-| API anahtarı çalışmıyor | `--provider hash --mode bm25` ile devam et ve **İngilizce anahtar kelime** ya da sembol adı ara (`retry timeout calculate`). Anahtar kelime araması çalışır, anlamsal arama yapılmaz — Türkçe doğal dille sonuç alamazsın, sebebi README'deki dil farkı bulgusu |
+| `ask` yavaş ya da hata veriyor | `search` komutuna geç — bir saniye, LLM maliyeti yok, referansları yine gösterir. (Voyage anahtarını yine kullanıyor: bedava olan ve ağ istemeyen yol `--provider hash`.) |
+| Anthropic anahtarı / kredisi bitti | `search --provider voyage` çalışmaya devam eder; demonun getirme tarafı ayakta kalır, yalnızca cevap üretimi düşer |
+| Hiçbir anahtar çalışmıyor | `--provider hash --mode bm25` ile devam et ve **İngilizce anahtar kelime** ya da sembol adı ara (`retry timeout calculate` → `_calculate_retry_timeout` 1. sırada gelir). Anahtar kelime araması çalışır, anlamsal arama yapılmaz — Türkçe doğal dille sonuç alamazsın, sebebi README'deki dil farkı bulgusu |
 | "Neden `--mode` yazmıyorsun?" | Yazmaya gerek yok: mod sağlayıcıdan çözülüyor (`voyage` → vector, `hash` → hybrid). Eskiden elle vermek gerekiyordu, düzeltildi |
 | İnternet yok | `codeqa grep` ve `codeqa stats` tamamen yerel; ölçüm çıktıları `runs/` altında hazır |
 | Soru gelir, cevabı bilmiyorsun | "Ölçmedim" demek bu projede geçerli bir cevap — raporun tamamı bunun üzerine kurulu |
 
+## İsteğe bağlı: web arayüzü (akışın parçası değil)
+
+`codeqa ui` diye bir komut var; `127.0.0.1:8765`'te tarayıcıda açılıyor. Projeler arayüzden
+ekleniyor, ama demo için indeksi doğrudan vererek açmak daha hızlı:
+
+```bash
+.venv/bin/python -m codeqa ui -i data/anthropic.jsonl --provider voyage --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
+```
+
+**Yukarıdaki 15 dakikalık akışa dahil değil, bilerek.** §2'nin ikna gücü referansı terminalde
+açmaktan geliyor: ortada gizlenecek yer olmadığı görünüyor. Arayüzde aynı şey tek tıkla oluyor
+(referansa tıkla → dosyanın o satırı, hedef satır vurgulanmış hâlde altında açılıyor) ama
+"hazırlanmış ekran" şüphesine açık.
+
+Ne zaman kullan:
+- Dinleyici terminale hiç bakmak istemiyorsa — §2'yi arayüzde yap, §3'ü yine terminalde
+  (ölçüm çıktısının ham görünmesi işine yarıyor).
+- Soru-cevap uzarsa: arayüzde arka arkaya soru sormak terminalden hızlı, her cevabın altında
+  maliyet yazıyor.
+- **"Bunu bizim kod tabanımıza da bağlayabilir miyiz?" sorusu gelirse** — "+ Proje ekle" ile
+  yolu ver, tarama bileşimi ve maliyeti gösterir. Cevabı anlatmak yerine göstermiş olursun.
+
+Demodan önce bir kez aç ve bir soru sor. Açılmıyorsa hiç bahsetme — akış onsuz tam.
+
 ## Sorulması muhtemel sorular
 
 **"Yanlış cevap verirse ne olur?"** Her referans programla doğrulanıyor: dosya var mı,
-satır dosya sınırları içinde mi. Uydurma referans sayısı ölçümlerde sıfır. Ama asıl
-güvence şu — cevap kaynağını gösterdiği için yanlışsa saniyeler içinde anlaşılıyor.
+satır dosya sınırları içinde mi. Bugüne kadarki bütün cevap koşularında **bir** uydurma
+referans görüldü ve doğrulama katmanı onu yakaladı: model `türler/beta/...py:13` yazmıştı,
+yani dizin adını Türkçeye çevirmişti — gerçek yol `types/beta/...`. Soruların Türkçe
+olmasının yan etkisi. Katman olmasaydı cevap doğru görünecekti; varlık sebebi tam olarak bu.
+Asıl güvence de şu — cevap kaynağını gösterdiği için yanlışsa saniyeler içinde anlaşılıyor.
 
 **"Ne kadara mal oluyor?"** İndeksleme bir kerelik, 1097 dosyalık repo için birkaç sent.
-Soru başına maliyet kullanılan modele göre değişiyor: Haiku ile soru başına yaklaşık yarım
-sent. Arama tarafı tamamen ücretsiz.
+Soru başına maliyet kullanılan modele göre değişiyor: Haiku ile ölçülen 0,6-2,2 sent —
+model dosyaya kendisi gitmek için tool çağırdığında üst uca yaklaşıyor. `ask` çıktısının
+son satırı bunu her koşuda yazıyor. Getirme tarafı — `eval`, `grep`, `search --provider
+hash` — tamamen ücretsiz.
 
 **"Kod dışarı çıkıyor mu?"** Varsayılanda evet, embedding sağlayıcısına gidiyor. Ama yerel
 model seçeneği ölçüldü ve çalışıyor: `bge-m3` ile bulut modeliyle aynı bulma oranı, MRR'da

@@ -35,6 +35,21 @@ class IndexNotReady(RuntimeError):
     """İndeks ya da vektörler eksik. Mesaj kullanıcıya ne yapacağını söyler."""
 
 
+def _package_version() -> str:
+    """Handshake'te dönen sürüm.
+
+    Verilmezse SDK boş string dönüyor ve Claude Code sunucuyu sürümsüz
+    listeliyor. Tek kaynak pyproject; paket kurulu değilse oradaki değere
+    düşülüyor.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("codeqa")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
 def load_searcher(
     index_path: Path,
     provider: str,
@@ -90,6 +105,7 @@ def build_server(
 
     server = MCPServer(
         name="codeqa",
+        version=_package_version(),
         instructions=(
             "Bu kod tabanı için indekslenmiş anlamsal arama. Bir sembolün nerede "
             "tanımlandığını ya da bir konunun kodda nerede ele alındığını bulmak için "

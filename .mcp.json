@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "codeqa": {
+      "command": "/Users/yusufgunes/Desktop/staj/.venv/bin/python",
+      "args": [
+        "-m", "codeqa", "serve",
+        "-i", "/Users/yusufgunes/Desktop/staj/data/anthropic.jsonl",
+        "--provider", "voyage"
+      ]
+    }
+  }
+}

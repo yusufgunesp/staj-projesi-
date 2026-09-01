@@ -14,5 +14,7 @@ runs/
 
 .DS_Store
 
-# pip install -e . çıktısı
+# pip install -e . ve wheel derleme çıktıları
 *.egg-info/
+build/
+dist/

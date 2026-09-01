@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codeqa</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #ffffff; --ink: #1d1c1a; --soft: #6d6a65;
+    --line: #e3e1dd; --accent: #b4552d; --ok: #2f7a4f; --warn: #a8321f;
+    --code-bg: #f5f4f1; --hit: #fdf3e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1917; --panel: #232220; --ink: #ecebe8; --soft: #a3a09a;
+      --line: #35332f; --accent: #e08b5f; --ok: #6bbd8b; --warn: #e87a63;
+      --code-bg: #1a1917; --hit: #2e2822;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--soft); font-size: 14px; }
+  #status { color: var(--soft); font-size: 13px; margin: 8px 0 24px; }
+  .ask-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  textarea {
+    width: 100%; border: 0; resize: vertical; min-height: 64px; background: transparent;
+    color: var(--ink); font: inherit; outline: none;
+  }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 550; border-radius: 8px; padding: 9px 18px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { opacity: .9; color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .hint { color: var(--soft); font-size: 13px; }
+  #out { margin-top: 28px; }
+  .spinner { color: var(--soft); font-size: 14px; display: flex; gap: 10px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: p 1s infinite; }
+  @keyframes p { 0%,100% { opacity: .25 } 50% { opacity: 1 } }
+  .answer { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .answer h2 { font-size: 17px; margin: 20px 0 8px; }
+  .answer h3 { font-size: 15px; margin: 18px 0 6px; }
+  .answer p { margin: 10px 0; }
+  .answer ul { margin: 10px 0; padding-left: 22px; }
+  .answer pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
+  .cite {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em;
+    background: var(--hit); border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; cursor: pointer; white-space: nowrap; color: var(--accent);
+  }
+  .cite:hover { border-color: var(--accent); }
+  .src {
+    margin: 10px 0 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background: var(--code-bg);
+  }
+  .src .head {
+    padding: 7px 12px; font-size: 12px; color: var(--soft); border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; gap: 12px; font-family: ui-monospace, Menlo, monospace;
+  }
+  .src pre { margin: 0; border: 0; border-radius: 0; background: transparent; }
+  .src .ln { color: var(--soft); user-select: none; }
+  .src .target { background: var(--hit); display: block; }
+  .meta { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--soft); }
+  .meta code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .warn { color: var(--warn); }
+  .ok { color: var(--ok); }
+  .hit { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+  .hit .loc { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--accent); cursor: pointer; }
+  .hit .sig { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--soft); margin-top: 4px; word-break: break-all; }
+  .err { color: var(--warn); background: var(--panel); border: 1px solid var(--warn); border-radius: 10px; padding: 14px 16px; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 20px; }
+  select, input[type=text] {
+    font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); outline: none;
+  }
+  input[type=text] { min-width: 340px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  input[type=text]:focus, select:focus { border-color: var(--accent); }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 20px;
+  }
+  .panel h3 { margin: 0 0 14px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 14px 0; }
+  .stat { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat .k { font-size: 11px; color: var(--soft); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .v { font-size: 19px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 4px 0 6px; }
+  .mix span { display: block; }
+  .mix .kod { background: var(--ok); } .mix .test { background: var(--soft); } .mix .dok { background: var(--accent); }
+  .track { height: 8px; background: var(--code-bg); border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .track > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .muted { color: var(--soft); font-size: 13px; }
+  .danger { color: var(--warn); }
+  .note {
+    border-left: 3px solid var(--line); padding: 8px 0 8px 12px; margin: 12px 0;
+    font-size: 13px; color: var(--soft);
+  }
+  .note.signal { border-left-color: var(--accent); }
+  .note b { color: var(--ink); }
+  .tag {
+    display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--soft);
+    margin-left: 6px; vertical-align: 1px;
+  }
+  .link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  #guide { max-height: 60vh; overflow-y: auto; }
+  #guide h2 { font-size: 16px; margin: 18px 0 8px; }
+  #guide h3 { font-size: 14px; margin: 14px 0 6px; }
+  #guide table { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  #guide th, #guide td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>codeqa</h1>
+    <span class="sub">kod tabanına soru sor — her cevap kaynak gösterir</span>
+  </header>
+  <div class="bar">
+    <select id="project"><option>yükleniyor…</option></select>
+    <button id="addToggle">+ Proje ekle</button>
+    <span class="muted" id="status"></span>
+  </div>
+
+  <div class="panel" id="addPanel" hidden>
+    <h3>Proje ekle</h3>
+    <div class="row" style="margin-top:0">
+      <input type="text" id="repoPath" placeholder="/Users/sen/projeler/myrepo" spellcheck="false">
+      <button id="scan">Tara</button>
+      <span class="muted">Tarama bedava ve yereldir — para harcamadan önce ne tutacağını görürsün.</span>
+    </div>
+    <div id="scanOut"></div>
+  </div>
+
+  <div class="panel" id="guidePanel" hidden>
+    <h3>Gerçek ölçüm için soru seti yazmak</h3>
+    <div id="guide">yükleniyor…</div>
+  </div>
+
+  <div class="ask-box">
+    <textarea id="q" placeholder="Örnek: bir istek 429 alırsa kaç kez ve ne kadar beklenerek yeniden deneniyor?"></textarea>
+    <div class="row">
+      <button class="primary" id="ask">Sor</button>
+      <button id="search">Sadece ara</button>
+      <span class="hint" id="hint"></span>
+    </div>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let busy = false;
+let projects = [];
+const activeId = () => $('#project').value || null;
+
+function esc(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Referansları tıklanabilir yapmak markdown'dan SONRA, metin düğümleri
+// üzerinde yapılıyor: `_base_client.py:818` çoğu zaman ters tırnak içinde
+// geliyor ve önce linklersek markdown onu kod bloğuna çevirip bozuyor.
+const CITE = /([\w./-]+\.[A-Za-z]{1,6}):(\d+)/g;
+
+function linkify(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.parentElement.closest('.cite')) continue;
+    if (CITE.test(walker.currentNode.nodeValue)) targets.push(walker.currentNode);
+    CITE.lastIndex = 0;
+  }
+  for (const node of targets) {
+    const span = document.createElement('span');
+    span.innerHTML = esc(node.nodeValue).replace(CITE,
+      (m, p, l) => `<span class="cite" data-path="${p}" data-line="${l}">${m}</span>`);
+    node.replaceWith(...span.childNodes);
+  }
+}
+
+function markdown(src) {
+  const blocks = [];
+  let text = src.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (m, code) => {
+    blocks.push(code);
+    return `\u0000${blocks.length - 1}\u0000`;
+  });
+  text = esc(text)
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^[ \t]*[-*] (.*)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
+  text = text.split(/\n{2,}/).map(p =>
+    /^\s*<(h2|h3|ul|pre)/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  return text.replace(/\u0000(\d+)\u0000/g,
+    (m, i) => `<pre><code>${esc(blocks[i])}</code></pre>`);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (!r.ok || data.error) throw new Error(data.error || 'İstek başarısız.');
+  return data;
+}
+
+let srcSeq = 0;
+
+async function toggleSource(chip) {
+  if (!chip.dataset.srcId) chip.dataset.srcId = 'src' + (++srcSeq);
+  const existing = document.querySelector(`[data-for="${chip.dataset.srcId}"]`);
+  if (existing) { existing.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'src';
+  box.dataset.for = chip.dataset.srcId;
+  box.innerHTML = '<div class="head">açılıyor…</div>';
+  // Referans çoğu zaman `<code>` ya da `<p>` içinde; <div>'i oraya sokmak
+  // geçersiz iç içe geçme olur. En yakın blok atanın ardına konuyor.
+  const block = chip.closest('p, li, h2, h3, pre, .hit') || chip;
+  block.after(box);
+  try {
+    const d = await api('/api/source', {project: activeId(), path: chip.dataset.path, line: +chip.dataset.line});
+    if (d.error) { box.innerHTML = `<div class="head warn">${esc(d.error)}</div>`; return; }
+    const rows = d.lines.map((line, i) => {
+      const n = d.start + i;
+      const cls = n === d.line ? ' class="target"' : '';
+      return `<span${cls}><span class="ln">${String(n).padStart(5)}</span>  ${esc(line)}</span>`;
+    }).join('\n');
+    box.innerHTML =
+      `<div class="head"><span>${esc(d.path)}</span><span class="ok">✓ ${d.total} satırlık dosyada ${d.line}. satır var</span></div>` +
+      `<pre>${rows}</pre>`;
+  } catch (e) {
+    box.innerHTML = `<div class="head warn">${esc(e.message)}</div>`;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.cite, .loc');
+  if (chip) toggleSource(chip);
+});
+
+let canAnswer = false;
+
+function setBusy(on, label) {
+  busy = on;
+  // Meşgul değilken bile düğmeler açılmayabilir: proje yoksa ya da anahtar
+  // yoksa kapalı kalmalılar.
+  $('#search').disabled = on || !projects.length;
+  $('#ask').disabled = on || !projects.length || !canAnswer;
+  if (on) $('#out').innerHTML = `<div class="spinner"><span class="dot"></span>${esc(label)}</div>`;
+}
+
+function renderHits(hits, title) {
+  return `<div class="hint" style="margin-bottom:10px">${esc(title)}</div>` + hits.map(h => `
+    <div class="hit">
+      <span class="loc" data-path="${h.path}" data-line="${h.line}">${esc(h.location)}</span>
+      <span class="hint"> [${esc(h.kind)}] ${esc(h.name)} · skor ${h.score} · ${esc(h.sources.join('+'))}</span>
+      ${h.signature ? `<div class="sig">${esc(h.signature)}</div>` : ''}
+    </div>`).join('');
+}
+
+$('#search').onclick = async () => {
+  const q = $('#q').value.trim();
+  if (!q || busy) return;
+  setBusy(true, 'aranıyor…');
+  try {
+    const d = await api('/api/search', {project: activeId(), query: q, k: 8});
+    $('#out').innerHTML = d.hits.length
+      ? renderHits(d.hits, `${d.hits.length} parça · konuma tıkla, kaynağı aç`)
+      : '<div class="err">Sonuç yok.</div>';
+  } catch (e) { $('#out').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  setBusy(false);
+};
+
+$('#ask').onclick = async () => {
+  const q = $('#q').value.trim();
+  if (!q || busy) return;
+  setBusy(true, 'düşünüyor… (6-13 saniye)');
+  try {
+    const d = await api('/api/ask', {project: activeId(), question: q});
+    const box = document.createElement('div');
+    box.className = 'answer';
+    box.innerHTML = markdown(d.text);
+    linkify(box);
+
+    const bits = [];
+    bits.push(`${d.hits.length} parça getirildi`);
+    bits.push(d.tool_calls.length
+      ? `${d.tool_calls.length} tool çağrısı (${d.tool_calls.map(t => t.name + '(' + t.detail + ')').join(', ')})`
+      : '0 tool çağrısı');
+    bits.push(`~$${d.cost.toFixed(4)}`);
+    let meta = `<div class="meta">${esc(bits.join(' · '))}`;
+    meta += d.unverified.length
+      ? `<br><span class="warn">⚠ doğrulanamayan referans: ${esc(d.unverified.join(', '))}</span>`
+      : `<br><span class="ok">✓ ${d.citations.length} referansın hepsi doğrulandı — herhangi birine tıklayıp kendin bak</span>`;
+    meta += '</div>';
+    box.insertAdjacentHTML('beforeend', meta);
+
+    $('#out').innerHTML = '';
+    $('#out').append(box);
+  } catch (e) { $('#out').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  setBusy(false);
+};
+
+$('#q').addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('#ask').click();
+});
+
+// --- proje yönetimi -------------------------------------------------------
+
+const tr = (n) => Number(n).toLocaleString('tr');
+
+function renderProjects(selectId) {
+  const sel = $('#project');
+  if (!projects.length) {
+    sel.innerHTML = '<option value="">— proje yok —</option>';
+    $('#status').textContent = 'Başlamak için bir proje ekle.';
+    $('#addPanel').hidden = false;
+    $('#ask').disabled = true; $('#search').disabled = true;
+    return;
+  }
+  sel.innerHTML = projects.map(p =>
+    `<option value="${p.id}">${p.name} — ${tr(p.chunks)} parça</option>`).join('');
+  sel.value = selectId && projects.some(p => p.id === selectId) ? selectId : projects[0].id;
+  showActive();
+}
+
+function showActive() {
+  const p = projects.find(x => x.id === activeId());
+  if (!p) return;
+  const sm = (p.checks || {}).smoke;
+  const smokeBit = sm && sm.rate != null ? ` · duman %${Math.round(sm.rate * 100)}` : '';
+  $('#status').textContent =
+    `${p.repo} · ${p.provider} · ${p.mode || 'oto'} · ${tr(p.files)} dosya${smokeBit}`;
+}
+
+$('#project').onchange = () => { showActive(); $('#out').innerHTML = ''; };
+
+$('#addToggle').onclick = () => {
+  $('#addPanel').hidden = !$('#addPanel').hidden;
+  if (!$('#addPanel').hidden) $('#repoPath').focus();
+};
+
+$('#scan').onclick = async () => {
+  const repo = $('#repoPath').value.trim();
+  if (!repo) return;
+  $('#scan').disabled = true;
+  $('#scanOut').innerHTML = '<div class="spinner"><span class="dot"></span>taranıyor…</div>';
+  try {
+    const d = await api('/api/projects/scan', {repo});
+    const c = d.composition.percent, e = d.estimate;
+    $('#scanOut').innerHTML = `
+      <div class="grid">
+        <div class="stat"><div class="k">dosya</div><div class="v">${tr(d.files)}</div></div>
+        <div class="stat"><div class="k">parça</div><div class="v">${tr(d.chunks)}</div></div>
+        <div class="stat"><div class="k">embed edilecek</div><div class="v">${tr(e.missing)}</div></div>
+        <div class="stat"><div class="k">tahmini tutar</div><div class="v">~$${e.cost.toFixed(3)}</div></div>
+      </div>
+      <div class="mix">
+        <span class="kod" style="width:${c.kod}%"></span>
+        <span class="test" style="width:${c.test}%"></span>
+        <span class="dok" style="width:${c['doküman']}%"></span>
+      </div>
+      <div class="muted">bileşim: kod %${c.kod} · test %${c.test} · doküman %${c['doküman']}
+        ${c['doküman'] > 25 ? '<br><span class="danger">⚠ Doküman oranı yüksek. Ölçümlerde markdown parçalarının kod sonuçlarını bastırdığı görüldü (MRR 0.406 → 0.586). Kod sorusu soracaksan bu projeyi <code>--no-docs</code> ile indekslemek daha iyi.</span>' : ''}
+        ${e.cached ? `<br>${tr(e.cached)} parçanın vektörü zaten önbellekte — onlar için ödeme yok.` : ''}
+        <br>tahmin ${e.price_per_mtok}$/MTok üzerinden, ~${tr(e.tokens)} token. Kesin tutar değil.
+      </div>
+      <div class="note signal">
+        <b>Dil işareti<span class="tag">ölçülmedi</span></b><br>
+        Parçaların %${d.language.percent}'i Türkçe metin taşıyor (eşik %${d.language.threshold}).
+        ${esc(d.language.reason)}<br>
+        Önerilen mod: <b>${d.language.suggested_mode}</b> — iki kod tabanına bakılarak kurulmuş
+        bir sezgi, ölçüm değil. Kesin cevap için bu repoda soru setiyle ölçmek gerekiyor.
+      </div>
+      <div class="row">
+        <button class="primary" id="confirmAdd">Devam et ve vektörleştir</button>
+        <button id="cancelAdd">Vazgeç</button>
+      </div>
+      <div id="jobOut"></div>`;
+    $('#confirmAdd').onclick = () => startAdd({...d, mode: d.language.suggested_mode});
+    $('#cancelAdd').onclick = () => { $('#scanOut').innerHTML = ''; };
+  } catch (e) {
+    $('#scanOut').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+  $('#scan').disabled = false;
+};
+
+async function startAdd(scan) {
+  $('#confirmAdd').disabled = true; $('#cancelAdd').disabled = true;
+  const out = $('#jobOut');
+  out.innerHTML = '<div class="muted">başlatılıyor…</div><div class="track"><div></div></div>';
+  try {
+    const d = await api('/api/projects/add', scan);
+    // Yoklama: iş dakikalar sürebiliyor, donmuş çubuk gösterilemez.
+    for (;;) {
+      await new Promise(r => setTimeout(r, 900));
+      const job = await (await fetch('/api/jobs/' + d.job)).json();
+      const pct = job.total ? Math.round(job.done * 100 / job.total) : 0;
+      out.innerHTML = `<div class="muted">${esc(job.message || job.state)} — ${tr(job.done)}/${tr(job.total)} parça · ${job.elapsed}s</div>
+                       <div class="track"><div style="width:${pct}%"></div></div>`;
+      if (job.state === 'bitti') {
+        out.innerHTML = `<div class="muted ok">✓ hazır — ${tr(job.result.computed)} yeni vektör, ${job.elapsed}s</div>`
+                      + smokeHtml(job.result.project.checks);
+        await loadProjects(job.result.project.id);
+        break;
+      }
+      if (job.state === 'hata') { out.innerHTML = `<div class="err">${esc(job.error)}</div>`; break; }
+    }
+  } catch (e) {
+    out.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function smokeHtml(checks) {
+  const sm = (checks || {}).smoke;
+  if (!sm) return '';
+  if (sm.error) return `<div class="note"><b>Duman testi</b><br>${esc(sm.error)}</div>`;
+  const pct = Math.round(sm.rate * 100);
+  return `<div class="note">
+    <b>Duman testi<span class="tag">ölçüm değil</span></b><br>
+    ${sm.total} sembolün <b>${sm.found}</b>'i bulundu (%${pct}).
+    ${sm.misses.length ? `Bulunamayanlar: <code>${esc(sm.misses.join(', '))}</code>` : ''}
+    <br>Bu bir doğruluk sayısı <b>değil</b>: sembol adını sorup onu bulmak neredeyse
+    <code>grep</code>, aracın değeri ise kelimesi kodda geçmeyen sorularda. Bu test yalnızca
+    "indeks ve arama hiç çalışıyor mu" sorusunu cevaplıyor. Düşük çıkarsa indekste bir sorun var.
+    <br>Gerçek bir sayı için <span class="link" onclick="showGuide()">soru seti yazmak</span> gerekiyor.
+  </div>`;
+}
+
+let guideLoaded = false;
+async function showGuide() {
+  const panel = $('#guidePanel');
+  panel.hidden = false;
+  panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+  if (guideLoaded) return;
+  const d = await (await fetch('/api/guide')).json();
+  const box = $('#guide');
+  box.innerHTML = markdown(d.markdown) +
+    `<div class="muted" style="margin-top:14px">Dosya: <code>${esc(d.path)}</code></div>`;
+  guideLoaded = true;
+}
+
+async function loadProjects(selectId) {
+  const s = await (await fetch('/api/status')).json();
+  projects = s.projects;
+  canAnswer = s.can_answer;
+  renderProjects(selectId);
+  if (!s.can_answer) {
+    $('#ask').disabled = true;
+    $('#hint').innerHTML = '<span class="warn">ANTHROPIC_API_KEY yok — cevaplama kapalı, arama çalışıyor.</span>';
+  } else if (projects.length) {
+    $('#ask').disabled = false; $('#search').disabled = false;
+    $('#hint').textContent = '⌘/Ctrl + Enter ile sor';
+  }
+}
+
+loadProjects();
+</script>
+</body>
+</html>

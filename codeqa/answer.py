@@ -81,6 +81,21 @@ class Answer:
         return sorted(seen)
 
 
+def resolve_in_repo(repo_root: Path, path: str) -> Path:
+    """Yolu repo köküne hapseder.
+
+    `path` güvenilmez girdi: cevaplama katmanında modelden, web arayüzünde
+    tarayıcıdan geliyor. `../../etc/passwd` ya da mutlak bir yol repo dışına
+    çıkabilir; buna izin verilmiyor. İki çağıranın da aynı kontrolü kullanması
+    için modül düzeyinde duruyor.
+    """
+    root = Path(repo_root).resolve()
+    target = (root / path).resolve()
+    if not target.is_relative_to(root):
+        raise ValueError(f"Repo dışına çıkılamaz: {path}")
+    return target
+
+
 def extract_citations(text: str) -> list[str]:
     """Cevap metnindeki `dosya:satır` referanslarını sırayla çıkarır."""
     seen: list[str] = []
@@ -118,15 +133,7 @@ class CodebaseAnswerer:
     # edilebilsinler.
 
     def _resolve(self, path: str) -> Path:
-        """Yolu repo köküne hapseder.
-
-        `path` modelden geliyor, yani güvenilmez girdi. `../../etc/passwd`
-        ya da mutlak bir yol repo dışına çıkabilir; buna izin verilmiyor.
-        """
-        target = (self.repo_root / path).resolve()
-        if not target.is_relative_to(self.repo_root):
-            raise ValueError(f"Repo dışına çıkılamaz: {path}")
-        return target
+        return resolve_in_repo(self.repo_root, path)
 
     def read_file(self, path: str, start_line: int = 1, end_line: int = 0) -> str:
         """Dosyayı satır numaralarıyla döndürür."""

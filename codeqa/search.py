@@ -400,6 +400,27 @@ def extend_with_imported_files(
     return selected
 
 
+def resolve_mode(mode: str | None, provider: str) -> str:
+    """Mod verilmediyse sağlayıcıya göre seçer.
+
+    İkisi bağımsız değil ve yanlış eşleşme sessizce kalite kaybettiriyor:
+
+    - `hash` anahtarsız yer tutucu, anlamsal arama yapmıyor. Onunla vektör
+      araması zayıf kalıyor ve BM25 tarafı taşıyor (kendi repo, 20 soru:
+      hash+vector recall %65 / MRR 0.230, hash+hybrid %90 / 0.416).
+    - Gerçek bir sağlayıcıda tablo tersine dönüyor: voyage ile büyük İngilizce
+      repoda saf vektör hibriti açık ara geçiyor (akış kapsamı 0.750 vs 0.683).
+
+    Eskiden varsayılan sabit `hybrid`'di ve kullanıcının `--provider voyage`
+    verirken `--mode vector` de vermesi gerekiyordu; vermezse aracın kötü
+    çalıştığını sanıyordu. README bunu uyarı olarak belgeliyordu — uyarmak
+    yerine düzeltmek daha iyi.
+    """
+    if mode:
+        return mode
+    return "hybrid" if provider == "hash" else "vector"
+
+
 @dataclass
 class SearchHit:
     """Tek bir arama sonucu."""
