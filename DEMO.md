@@ -212,6 +212,34 @@ doğrulandı (`initialize` → `tools/list` → `tools/call`; arama 0,9 saniyede
 **Demodan önce bir kez dene.** Claude Code'u bu dizinde aç ve `codeqa` sunucusunun
 bağlandığını gör; bağlanmadıysa §5'i canlı yapma, yapılandırmayı göstermekle yetin.
 
+### Burada sorulacak soru §2'deki soru OLMAMALI
+
+Provada çıktı: *"bir istek 429 alırsa kaç kez yeniden deneniyor?"* diye sorulunca Claude
+**aracı hiç çağırmadan** ezberden doğru cevap verdi — tek bir `dosya:satır` referansı yoktu.
+Anthropic SDK'sının retry davranışı zaten bildiği bir şey, aramaya ihtiyaç duymuyor.
+
+Demoda bu olursa §5 kendi kendini çürütür: dinleyici haklı olarak "bunun için araca ne gerek
+var" diye düşünür. Çözüm, **ezberlenemeyecek bir iç detay** sormak:
+
+> "Bir skill arşivi diskten açılırken zararlı bir dosyanın çıkarma dizininin dışına yazması
+> nasıl engelleniyor?"
+
+Bu soru zor setinin test bölmesinden (`z13`) — cevabı `lib/tools/_skills.py`'deki
+`_extract_skill_archive`, `_safe_member_name` ve `_within`'de. Doğrulandı: `search_code` doğru
+yeri getiriyor, üstelik ikinci korumayı da (`_beta_builtin_memory_tool.py`'deki
+`_validate_no_symlink_escape`) yanına koyuyor.
+
+Alternatif, yazılımcı olmayan bir dinleyiciye daha yakın:
+
+> "Kimlik bilgileri günlüğe yazılırken sırların açığa çıkmaması nasıl sağlanıyor?"
+
+İki kural:
+
+- **Araç adı yazma.** `index_status` gibi bir şey yazmak "önceden ayarlanmış" görünür. Doğal
+  soru sor, Claude'un kendiliğinden aracı çağırması asıl gösteri.
+- **Cevapta referans var mı diye bak.** Referans yoksa araç kullanılmamıştır; o an
+  "bakın, bunu ezberden bilemezdi" diyeceğin cümle boşa düşer.
+
 > "Cevaplama tarafını bilerek sunmuyorum. Claude Code zaten bir dil modeli; ona ikinci
 > bir modelin cevabını vermek yerine ham arama sonuçlarını veriyorum. Hem ucuz hem daha
 > doğru — kendi bağlamıyla yorumluyor."
