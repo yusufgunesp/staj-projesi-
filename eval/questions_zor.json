@@ -267,6 +267,125 @@
         "_client.py"
       ],
       "note": "close/__exit__/__aexit__; SyncAPIClient ve AsyncAPIClient"
+    },
+    {
+      "id": "z27",
+      "split": "test",
+      "question": "Dört ayrı tool koşucusu var (eşzamanlı/eşzamansız, akışlı/akışsız); farkları nerede kuruluyor?",
+      "expect_files": [
+        "lib/tools/_beta_runner.py"
+      ],
+      "note": "BetaToolRunner / BetaAsyncToolRunner / BetaStreamingToolRunner / BetaAsyncStreamingToolRunner aynı dosyada"
+    },
+    {
+      "id": "z28",
+      "split": "test",
+      "question": "Yanıt üç farklı sarmalayıcıyla dönebiliyor; hangisi ne zaman ve nerede seçiliyor?",
+      "expect_files": [
+        "_response.py",
+        "_legacy_response.py"
+      ],
+      "note": "APIResponse / AsyncAPIResponse / LegacyAPIResponse; _convert_to_legacy_response ayrımı"
+    },
+    {
+      "id": "z29",
+      "split": "test",
+      "question": "Ara katman (middleware) zinciri nerede tanımlanıp nerede çalıştırılıyor?",
+      "expect_files": [
+        "_middleware.py",
+        "_base_client.py"
+      ],
+      "note": "Tip tanımları _middleware'de, zincirin koşturulması base client'ta"
+    },
+    {
+      "id": "z30",
+      "split": "test",
+      "question": "Bedrock istemcisi kurulurken yapılandırma nasıl çözümleniyor ve Vertex'ten nerede ayrılıyor?",
+      "expect_files": [
+        "lib/bedrock/_mantle.py",
+        "lib/vertex/_client.py"
+      ],
+      "note": "İki ayrı bulut yolu; benzer görünüp farklı çözümleme"
+    },
+    {
+      "id": "z31",
+      "split": "test",
+      "question": "Metinler ve olaylar akış sırasında iki ayrı yerde biriktiriliyor; beta olan hangisi?",
+      "expect_files": [
+        "lib/streaming/_messages.py",
+        "lib/streaming/_beta_messages.py"
+      ],
+      "note": "Neredeyse birebir aynı iki dosya — ayırt etmesi zor"
+    },
+    {
+      "id": "z32",
+      "split": "test",
+      "question": "Python nesneleri API'nin beklediği biçime nerede çevriliyor?",
+      "expect_files": [
+        "_utils/_transform.py"
+      ],
+      "note": "maybe_transform / _transform_recursive"
+    },
+    {
+      "id": "z33",
+      "split": "test",
+      "question": "İş kuyruğunu yoklayan döngü ile kalp atışı gönderen döngü ayrı; ikisi nerede?",
+      "expect_files": [
+        "lib/environments/_worker.py",
+        "resources/beta/environments/work.py"
+      ],
+      "note": "poller ile heartbeat farklı katmanlarda"
+    },
+    {
+      "id": "z34",
+      "split": "test",
+      "question": "Jeton sayımı hem kararlı hem beta uçta var; ikisi nerede?",
+      "expect_files": [
+        "resources/messages/messages.py",
+        "resources/beta/messages/messages.py"
+      ],
+      "note": "count_tokens iki kez yazılmış"
+    },
+    {
+      "id": "z35",
+      "split": "test",
+      "question": "Özel bir HTTP istemcisi verilmek istendiğinde nereye takılıyor?",
+      "expect_files": [
+        "_base_client.py",
+        "_utils/_httpx.py"
+      ],
+      "note": "DefaultHttpxClient / DefaultAsyncHttpxClient"
+    },
+    {
+      "id": "z36",
+      "split": "test",
+      "question": "Zaman aşımı istemci düzeyinde ve istek düzeyinde ayrı ayrı verilebiliyor; hangisi neyi eziyor?",
+      "expect_files": [
+        "_base_client.py",
+        "_models.py"
+      ],
+      "note": "FinalRequestOptions.timeout vs client timeout"
+    },
+    {
+      "id": "z37",
+      "split": "test",
+      "question": "Kimlik bilgisi sağlayıcıları birden çok kaynaktan gelebiliyor; ortak arayüz nerede?",
+      "expect_files": [
+        "lib/credentials/_providers.py",
+        "lib/credentials/_cache.py"
+      ],
+      "note": "Sağlayıcı zinciri + jeton önbelleği"
+    },
+    {
+      "id": "z38",
+      "split": "test",
+      "question": "Bir oturumda tool çağrısı ile mesaj akışındaki tool çağrısı ayrı ele alınıyor; ikisi nerede?",
+      "expect_files": [
+        "lib/tools/_beta_session_runner.py",
+        "lib/tools/_tool_dispatch.py"
+      ],
+      "note": "Oturum tarafı ile mesaj tarafı ayrı"
     }
-  ]
+  ],
+  "_bolme_notu": "z01-z12 dev (genişletme eksenleri bunların hatalarına bakılarak tasarlandı, kirli sayılıyor), z13-z38 test. Test bölmesi 14'ten 26'ya çıkarıldı: n=14'te %100 sonucun %95 güven aralığı %78-100 (22 puan), n=26'da %87-100 (13 puan). z27-z38 LLM tarafından yazıldı — sorular kod okunmadan, etiketler grep ile; insan gözden geçirmeli."
 }

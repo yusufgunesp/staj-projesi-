@@ -523,6 +523,187 @@
       "expect_files": [
         "resources/beta/vaults/credentials.py"
       ]
+    },
+    {
+      "id": "t21",
+      "split": "test",
+      "question": "Kütüphanenin sürüm numarası nerede tanımlı?",
+      "expect_files": [
+        "_version.py"
+      ],
+      "note": "__version__"
+    },
+    {
+      "id": "t22",
+      "split": "test",
+      "question": "İsteklere eklenen platform ve sürüm başlıkları nerede üretiliyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "note": "platform_headers / default_headers"
+    },
+    {
+      "id": "t23",
+      "split": "test",
+      "question": "Satır satır JSON dönen yanıtlar nerede çözülüyor?",
+      "expect_files": [
+        "_decoders/jsonl.py"
+      ],
+      "note": "JSONLDecoder"
+    },
+    {
+      "id": "t24",
+      "split": "test",
+      "question": "Sorgu parametrelerindeki dizilerin URL biçimi nerede seçiliyor?",
+      "expect_files": [
+        "_client.py"
+      ],
+      "note": "Querystring(array_format='brackets')"
+    },
+    {
+      "id": "t25",
+      "split": "test",
+      "question": "Webhook imzası doğrulanırken gizli anahtar nereden okunuyor?",
+      "expect_files": [
+        "resources/beta/webhooks.py"
+      ],
+      "note": "unwrap + imza doğrulama"
+    },
+    {
+      "id": "t26",
+      "split": "test",
+      "question": "İstisna sınıflarının ortak taban sınıfı nerede?",
+      "expect_files": [
+        "_exceptions.py"
+      ],
+      "note": "AnthropicError"
+    },
+    {
+      "id": "t27",
+      "split": "test",
+      "question": "Yeniden denemeler arasındaki azami bekleme süresi nerede tanımlı?",
+      "expect_files": [
+        "_constants.py"
+      ],
+      "note": "MAX_RETRY_DELAY = 8.0"
+    },
+    {
+      "id": "t28",
+      "split": "test",
+      "question": "Kaçıncı deneme olduğunu taşıyan başlık nerede ekleniyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "note": "x-stainless-retry-count"
+    },
+    {
+      "id": "t29",
+      "split": "test",
+      "question": "Ajan araçlarının çalışma dizini nerede belirleniyor?",
+      "expect_files": [
+        "lib/tools/agent_toolset.py"
+      ],
+      "note": "AgentToolContext.workdir"
+    },
+    {
+      "id": "t30",
+      "split": "test",
+      "question": "Konuşma geçmişinin kısaltılması ayarı nerede tanımlı?",
+      "expect_files": [
+        "lib/tools/_beta_compaction_control.py"
+      ],
+      "note": "CompactionControl"
+    },
+    {
+      "id": "t31",
+      "split": "test",
+      "question": "Skill dizinine verilen dosya izinleri nerede belirleniyor?",
+      "expect_files": [
+        "lib/tools/_skills.py"
+      ],
+      "note": "_SKILL_DIR_MODE / _archive_file_mode"
+    },
+    {
+      "id": "t32",
+      "split": "test",
+      "question": "İş kuyruğu yoklamasının bloklama süresi nerede tanımlı?",
+      "expect_files": [
+        "lib/environments/_poller.py"
+      ],
+      "note": "POLL_BLOCK_MS"
+    },
+    {
+      "id": "t33",
+      "split": "test",
+      "question": "Tool sonucu konuşma geçmişine hangi biçimde konuyor?",
+      "expect_files": [
+        "lib/tools/_tool_dispatch.py"
+      ],
+      "note": "tool_result blokları"
+    },
+    {
+      "id": "t34",
+      "split": "test",
+      "question": "Sayfalama imlecini taşıyan alan nerede tanımlı?",
+      "expect_files": [
+        "pagination.py"
+      ],
+      "note": "PageInfo / cursor alanı"
+    },
+    {
+      "id": "t35",
+      "split": "test",
+      "question": "Ara katmanların (middleware) tip tanımı nerede?",
+      "expect_files": [
+        "_middleware.py"
+      ],
+      "note": "MiddlewareCallable, CallNext"
+    },
+    {
+      "id": "t36",
+      "split": "test",
+      "question": "Yedek modele geçildiğinde durum nerede tutuluyor?",
+      "expect_files": [
+        "lib/middleware/_fallbacks.py"
+      ],
+      "note": "BetaFallbackState"
+    },
+    {
+      "id": "t37",
+      "split": "test",
+      "question": "İkili (binary) yanıt sınıfı nerede tanımlı?",
+      "expect_files": [
+        "_response.py"
+      ],
+      "note": "BinaryAPIResponse"
+    },
+    {
+      "id": "t38",
+      "split": "test",
+      "question": "Oturum aracı koşucusunun boşta kalma sınırı nerede?",
+      "expect_files": [
+        "lib/tools/_beta_session_runner.py"
+      ],
+      "note": "DEFAULT_MAX_IDLE"
+    },
+    {
+      "id": "t39",
+      "split": "test",
+      "question": "Akış nesnesinin ürettiği olay tipleri nerede tanımlı?",
+      "expect_files": [
+        "_streaming.py"
+      ],
+      "note": "ServerSentEvent"
+    },
+    {
+      "id": "t40",
+      "split": "test",
+      "question": "Yönetilen ajanlar için beta başlığı nerede tanımlı?",
+      "expect_files": [
+        "lib/tools/_beta_session_runner.py"
+      ],
+      "note": "MANAGED_AGENTS_BETA"
     }
-  ]
+  ],
+  "_bolme_notu": "d01-d40 dev, t01-t40 test. Test bölmesi 20'den 40'a çıkarıldı: n=20'de %100 sonucun %95 güven aralığı %84-100 (16 puan), n=40'ta %91-100 (9 puan). t21-t40 LLM tarafından yazıldı — sorular kod okunmadan, etiketler grep ile; insan gözden geçirmeli (Kural 3: setin tamamı)."
 }

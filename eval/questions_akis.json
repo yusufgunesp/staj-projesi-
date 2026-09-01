@@ -4,124 +4,386 @@
   "index": "data/anthropic_ctx.jsonl",
   "questions": [
     {
-      "id": "a01", "split": "dev",
+      "id": "a01",
+      "split": "dev",
       "question": "Bir mesaj isteği gönderildiğinde istek nesnesi nerede kuruluyor ve hangi başlıklar ekleniyor?",
-      "expect_files": ["_base_client.py", "_client.py"],
+      "expect_files": [
+        "_base_client.py",
+        "_client.py"
+      ],
       "note": "_build_request + auth_headers/default_headers"
     },
     {
-      "id": "a02", "split": "dev",
+      "id": "a02",
+      "split": "dev",
       "question": "Bir istek 429 alırsa ne oluyor, ne kadar bekleniyor ve kaç kez deneniyor?",
-      "expect_files": ["_base_client.py", "_constants.py"],
+      "expect_files": [
+        "_base_client.py",
+        "_constants.py"
+      ],
       "note": "_should_retry + _calculate_retry_timeout + DEFAULT_MAX_RETRIES"
     },
     {
-      "id": "a03", "split": "dev",
+      "id": "a03",
+      "split": "dev",
       "question": "Sunucudan gelen ham baytlar nasıl olaya, olaylar nasıl tam mesaja dönüşüyor?",
-      "expect_files": ["_streaming.py", "lib/streaming/_messages.py"],
+      "expect_files": [
+        "_streaming.py",
+        "lib/streaming/_messages.py"
+      ],
       "note": "SSEDecoder.decode -> Stream.__stream__ -> accumulate_event"
     },
     {
-      "id": "a04", "split": "dev",
+      "id": "a04",
+      "split": "dev",
       "question": "Bir dosya yüklendiğinde içerik hangi aşamalardan geçip isteğe konuyor?",
-      "expect_files": ["resources/beta/files.py", "_files.py", "_base_client.py"],
+      "expect_files": [
+        "resources/beta/files.py",
+        "_files.py",
+        "_base_client.py"
+      ],
       "note": "files.upload -> to_httpx_files -> _serialize_multipartform"
     },
     {
-      "id": "a05", "split": "dev",
+      "id": "a05",
+      "split": "dev",
       "question": "Sayfalı bir listede sonraki sayfaya nasıl geçiliyor, imleç nereden okunuyor?",
-      "expect_files": ["_base_client.py"],
+      "expect_files": [
+        "_base_client.py"
+      ],
       "note": "has_next_page -> next_page_info -> get_next_page; tek dosyada ama üç adım"
     },
     {
-      "id": "a06", "split": "dev",
+      "id": "a06",
+      "split": "dev",
       "question": "API anahtarı yoksa kimlik bilgisi nereden bulunuyor ve isteğe nasıl ekleniyor?",
-      "expect_files": ["lib/credentials/_providers.py", "lib/credentials/_auth.py", "_client.py"],
+      "expect_files": [
+        "lib/credentials/_providers.py",
+        "lib/credentials/_auth.py",
+        "_client.py"
+      ],
       "note": "sağlayıcı zinciri -> AccessTokenAuth -> auth_headers"
     },
     {
-      "id": "a07", "split": "dev",
+      "id": "a07",
+      "split": "dev",
       "question": "Model isteği reddettiğinde hangi adımlarla başka modele geçiliyor ve kredi jetonu nerede kullanılıyor?",
-      "expect_files": ["lib/middleware/_fallbacks.py"],
+      "expect_files": [
+        "lib/middleware/_fallbacks.py"
+      ],
       "note": "refusal tespiti -> _credit_token_param -> yeniden istek"
     },
     {
-      "id": "a08", "split": "dev",
+      "id": "a08",
+      "split": "dev",
       "question": "Tool runner bir tool çağrısı gördüğünde hangi adımları izleyip döngüyü nasıl sürdürüyor?",
-      "expect_files": ["lib/tools/_beta_runner.py", "lib/tools/_beta_functions.py"],
+      "expect_files": [
+        "lib/tools/_beta_runner.py",
+        "lib/tools/_beta_functions.py"
+      ],
       "note": "__next__ -> tool çalıştırma -> generate_tool_call_response"
     },
     {
-      "id": "a09", "split": "dev",
+      "id": "a09",
+      "split": "dev",
       "question": "Ajanın çalıştırdığı bir kabuk komutu hangi kontrollerden geçiyor?",
-      "expect_files": ["lib/tools/agent_toolset.py"],
+      "expect_files": [
+        "lib/tools/agent_toolset.py"
+      ],
       "note": "BashSession -> resolve_path -> çalıştırma"
     },
     {
-      "id": "a10", "split": "dev",
+      "id": "a10",
+      "split": "dev",
       "question": "Hafıza aracına yazma isteği geldiğinde yol doğrulaması ve dosya yazımı nasıl yapılıyor?",
-      "expect_files": ["lib/tools/_beta_builtin_memory_tool.py"],
+      "expect_files": [
+        "lib/tools/_beta_builtin_memory_tool.py"
+      ],
       "note": "komut dağıtımı -> _validate_no_symlink_escape -> _atomic_write_file"
     },
     {
-      "id": "a11", "split": "test",
+      "id": "a11",
+      "split": "test",
       "question": "Bir HTTP hatası geldiğinde yanıttan istisnaya kadar hangi adımlar işliyor?",
-      "expect_files": ["_base_client.py", "_exceptions.py"],
+      "expect_files": [
+        "_base_client.py",
+        "_exceptions.py"
+      ],
       "note": "_process_response -> _make_status_error_from_response -> istisna sınıfı"
     },
     {
-      "id": "a12", "split": "test",
+      "id": "a12",
+      "split": "test",
       "question": "Yanıt gövdesi hangi aşamalarda ayrıştırılıp tip nesnesine dönüşüyor?",
-      "expect_files": ["_base_client.py", "_response.py"],
+      "expect_files": [
+        "_base_client.py",
+        "_response.py"
+      ],
       "note": "_process_response -> APIResponse.parse -> _process_response_data"
     },
     {
-      "id": "a13", "split": "test",
+      "id": "a13",
+      "split": "test",
       "question": "Bedrock istemcisi kurulduğunda yapılandırma ve kimlik doğrulama nasıl çözümleniyor?",
-      "expect_files": ["lib/bedrock/_mantle.py", "lib/aws/_credentials.py"],
+      "expect_files": [
+        "lib/bedrock/_mantle.py",
+        "lib/aws/_credentials.py"
+      ],
       "note": "_resolve_mantle_config -> AWS kimlik bilgileri"
     },
     {
-      "id": "a14", "split": "test",
+      "id": "a14",
+      "split": "test",
       "question": "Google Cloud üzerinde bir istek gönderilirken temel adres ve proje kimliği nasıl belirleniyor?",
-      "expect_files": ["lib/google_cloud/_client.py"],
+      "expect_files": [
+        "lib/google_cloud/_client.py"
+      ],
       "note": "_resolve_base_url -> _project_from_credentials"
     },
     {
-      "id": "a15", "split": "test",
+      "id": "a15",
+      "split": "test",
       "question": "Toplu iş oluşturulduktan sonra sonuçlara ulaşana kadar hangi çağrılar yapılıyor?",
-      "expect_files": ["resources/messages/batches.py"],
+      "expect_files": [
+        "resources/messages/batches.py"
+      ],
       "note": "create -> retrieve -> results"
     },
     {
-      "id": "a16", "split": "test",
+      "id": "a16",
+      "split": "test",
       "question": "Oturum içindeki bir tool çağrısı istemciye nasıl ulaşıp sonucu nasıl geri dönüyor?",
-      "expect_files": ["lib/tools/_beta_session_runner.py"],
+      "expect_files": [
+        "lib/tools/_beta_session_runner.py"
+      ],
       "note": "DispatchedToolCall -> _build_result_event"
     },
     {
-      "id": "a17", "split": "test",
+      "id": "a17",
+      "split": "test",
       "question": "Akış sırasında bağlantı kapanırsa kaynaklar nasıl serbest bırakılıyor?",
-      "expect_files": ["_streaming.py"],
+      "expect_files": [
+        "_streaming.py"
+      ],
       "note": "__exit__ -> close -> response.close"
     },
     {
-      "id": "a18", "split": "test",
+      "id": "a18",
+      "split": "test",
       "question": "Sorgu parametreleri iç içe yapılardan URL dizesine nasıl dönüşüyor?",
-      "expect_files": ["_qs.py"],
+      "expect_files": [
+        "_qs.py"
+      ],
       "note": "stringify -> stringify_items -> _stringify_item"
     },
     {
-      "id": "a19", "split": "test",
+      "id": "a19",
+      "split": "test",
       "question": "Beta bir uç noktaya istek atarken beta başlıkları ve istek seçenekleri nerede birleşiyor?",
-      "expect_files": ["resources/beta/messages/messages.py", "_base_client.py"],
+      "expect_files": [
+        "resources/beta/messages/messages.py",
+        "_base_client.py"
+      ],
       "note": "kaynak metodu betas'ı birleştiriyor -> _build_request başlıkları koyuyor"
     },
     {
-      "id": "a20", "split": "test",
+      "id": "a20",
+      "split": "test",
       "question": "Webhook geldiğinde imza doğrulamasından olay nesnesine kadar ne oluyor?",
-      "expect_files": ["resources/beta/webhooks.py"],
+      "expect_files": [
+        "resources/beta/webhooks.py"
+      ],
       "note": "unwrap -> imza doğrulama -> olay ayrıştırma"
+    },
+    {
+      "id": "a21",
+      "split": "test",
+      "question": "Vertex istemcisi kurulduğunda kimlik ve temel adres nasıl çözümleniyor?",
+      "expect_files": [
+        "lib/vertex/_client.py"
+      ],
+      "note": "BaseVertexClient + _prepare_options"
+    },
+    {
+      "id": "a22",
+      "split": "test",
+      "question": "Foundry istemcisinde kimlik doğrulama seçenekleri nasıl işleniyor?",
+      "expect_files": [
+        "lib/foundry.py"
+      ],
+      "note": "MutuallyExclusiveAuthError kontrolü dahil"
+    },
+    {
+      "id": "a23",
+      "split": "test",
+      "question": "Jeton sayımı isteği gönderildiğinde hangi adımlar işliyor?",
+      "expect_files": [
+        "resources/messages/messages.py",
+        "_base_client.py"
+      ],
+      "note": "count_tokens → post → yanıt"
+    },
+    {
+      "id": "a24",
+      "split": "test",
+      "question": "Bir iş öğesi alınıp çalıştırılana kadar worker hangi adımları izliyor?",
+      "expect_files": [
+        "lib/environments/_worker.py"
+      ],
+      "note": "poll → workdir → skills → runner → heartbeat"
+    },
+    {
+      "id": "a25",
+      "split": "test",
+      "question": "Bir skill indirilip kullanılabilir hâle gelene kadar ne oluyor?",
+      "expect_files": [
+        "lib/tools/_skills.py",
+        "lib/tools/agent_toolset.py"
+      ],
+      "note": "download_session_skills → arşiv çıkarma → setup_skills"
+    },
+    {
+      "id": "a26",
+      "split": "test",
+      "question": "MCP araçları SDK tiplerine nasıl çevrilip çağrılıyor?",
+      "expect_files": [
+        "lib/tools/mcp.py",
+        "lib/tools/_tool_dispatch.py"
+      ],
+      "note": "MCP tipleri → SDK tipleri → dispatch"
+    },
+    {
+      "id": "a27",
+      "split": "test",
+      "question": "with_raw_response ile istek atıldığında akış nasıl değişiyor?",
+      "expect_files": [
+        "_response.py",
+        "_legacy_response.py"
+      ],
+      "note": "Ham yanıt sarmalayıcısı devreye giriyor"
+    },
+    {
+      "id": "a28",
+      "split": "test",
+      "question": "Akış sırasında tool çağrısı gelirse parçalar nasıl birleştirilip tam çağrıya dönüşüyor?",
+      "expect_files": [
+        "lib/streaming/_messages.py",
+        "_streaming.py"
+      ],
+      "note": "input_json_delta biriktirme"
+    },
+    {
+      "id": "a29",
+      "split": "test",
+      "question": "Bir tool fonksiyonu tanımlandığında şeması nasıl üretilip isteğe konuyor?",
+      "expect_files": [
+        "lib/tools/_beta_functions.py"
+      ],
+      "note": "beta_tool dekoratörü → şema"
+    },
+    {
+      "id": "a30",
+      "split": "test",
+      "question": "Günlükleme nasıl kuruluyor ve nereye yazıyor?",
+      "expect_files": [
+        "_utils/_logs.py"
+      ],
+      "note": "setup_logging"
+    },
+    {
+      "id": "a31",
+      "split": "test",
+      "question": "Özel bir HTTP taşıyıcısı verildiğinde istemci nasıl kuruluyor?",
+      "expect_files": [
+        "_base_client.py",
+        "_utils/_httpx.py"
+      ],
+      "note": "DefaultHttpxClient / transport"
+    },
+    {
+      "id": "a32",
+      "split": "test",
+      "question": "retry-after başlığı geldiğinde nasıl okunup bekleme süresine çevriliyor?",
+      "expect_files": [
+        "_base_client.py"
+      ],
+      "note": "_parse_retry_after_header → _calculate_retry_timeout"
+    },
+    {
+      "id": "a33",
+      "split": "test",
+      "question": "Eşzamansız istemcide akış eşzamanlıdan hangi noktalarda ayrılıyor?",
+      "expect_files": [
+        "_streaming.py",
+        "_base_client.py"
+      ],
+      "note": "Stream vs AsyncStream; __aiter__/__anext__"
+    },
+    {
+      "id": "a34",
+      "split": "test",
+      "question": "Bir tünel açıldığında hangi çağrılar yapılıyor?",
+      "expect_files": [
+        "resources/beta/tunnels/tunnels.py"
+      ],
+      "note": "create → connect akışı"
+    },
+    {
+      "id": "a35",
+      "split": "test",
+      "question": "Yapılandırılmış çıktı istendiğinde şema nasıl hazırlanıyor?",
+      "expect_files": [
+        "lib/_parse/_transform.py"
+      ],
+      "note": "transform_schema"
+    },
+    {
+      "id": "a36",
+      "split": "test",
+      "question": "Oturum olayları biriktirilip tam nesneye nasıl dönüşüyor?",
+      "expect_files": [
+        "lib/sessions/_accumulate.py"
+      ],
+      "note": "accumulate_managed_agents_event"
+    },
+    {
+      "id": "a37",
+      "split": "test",
+      "question": "Kimlik jetonunun süresi dolduğunda yenileme akışı nasıl işliyor?",
+      "expect_files": [
+        "lib/credentials/_cache.py",
+        "lib/credentials/_providers.py"
+      ],
+      "note": "TokenCache._call_provider + 401 yeniden deneme"
+    },
+    {
+      "id": "a38",
+      "split": "test",
+      "question": "Bir dosya indirildiğinde ikili içerik nasıl teslim ediliyor?",
+      "expect_files": [
+        "_response.py"
+      ],
+      "note": "BinaryAPIResponse"
+    },
+    {
+      "id": "a39",
+      "split": "test",
+      "question": "İstek gönderilmeden önce seçenekler nasıl birleştirilip son hâline getiriliyor?",
+      "expect_files": [
+        "_models.py",
+        "_base_client.py"
+      ],
+      "note": "FinalRequestOptions.construct + _build_request"
+    },
+    {
+      "id": "a40",
+      "split": "test",
+      "question": "Bir deployment oluşturulduğunda hangi çağrılar yapılıyor?",
+      "expect_files": [
+        "resources/beta/deployments.py"
+      ],
+      "note": "create → durum sorgulama"
     }
-  ]
+  ],
+  "_bolme_notu": "a01-a10 dev, a11-a40 test. Test bölmesi 10'dan 30'a çıkarıldı: n=10'da %100 sonucun %95 güven aralığı %72-100 (28 puan), n=30'da %89-100 (11 puan). a21-a40 LLM tarafından yazıldı — sorular kod okunmadan, etiketler grep ile; insan gözden geçirmeli (Kural 3: setin tamamı)."
 }

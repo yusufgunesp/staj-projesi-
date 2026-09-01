@@ -6,118 +6,380 @@
     {
       "id": "q01",
       "question": "Bir Python dosyası nasıl parçalara ayrılıyor?",
-      "expect_files": ["codeqa/indexer.py"],
-      "expect_symbols": ["extract_from_source"]
+      "expect_files": [
+        "codeqa/indexer.py"
+      ],
+      "expect_symbols": [
+        "extract_from_source"
+      ],
+      "split": "dev"
     },
     {
       "id": "q02",
       "question": "Hangi dizinler taranmıyor, node_modules atlanıyor mu?",
-      "expect_files": ["codeqa/indexer.py"],
-      "expect_symbols": ["iter_python_files"]
+      "expect_files": [
+        "codeqa/indexer.py"
+      ],
+      "expect_symbols": [
+        "iter_python_files"
+      ],
+      "split": "dev"
     },
     {
       "id": "q03",
       "question": "Bir fonksiyonun dekoratörleri parçaya dahil ediliyor mu?",
-      "expect_files": ["codeqa/indexer.py"],
-      "note": "_span dekoratör satırını başlangıca çekiyor"
+      "expect_files": [
+        "codeqa/indexer.py"
+      ],
+      "note": "_span dekoratör satırını başlangıca çekiyor",
+      "split": "dev"
     },
     {
       "id": "q04",
       "question": "Sınıf parçasının metninde ne var, metot gövdeleri tekrar ediliyor mu?",
-      "expect_files": ["codeqa/indexer.py"]
+      "expect_files": [
+        "codeqa/indexer.py"
+      ],
+      "split": "dev"
     },
     {
       "id": "q05",
       "question": "Sözdizimi hatası olan bir dosya indeksleme koşusunu durduruyor mu?",
-      "expect_files": ["codeqa/indexer.py"],
-      "expect_symbols": ["index_repo"]
+      "expect_files": [
+        "codeqa/indexer.py"
+      ],
+      "expect_symbols": [
+        "index_repo"
+      ],
+      "split": "dev"
     },
     {
       "id": "q06",
       "question": "Markdown dosyaları nasıl bölünüyor?",
-      "expect_files": ["codeqa/docs.py"],
-      "expect_symbols": ["extract_from_markdown"]
+      "expect_files": [
+        "codeqa/docs.py"
+      ],
+      "expect_symbols": [
+        "extract_from_markdown"
+      ],
+      "split": "dev"
     },
     {
       "id": "q07",
       "question": "Kod bloğu içinde geçen # işaretli satırlar başlık sayılıyor mu?",
-      "expect_files": ["codeqa/docs.py"],
-      "note": "fence takibi — in_fence bayrağı"
+      "expect_files": [
+        "codeqa/docs.py"
+      ],
+      "note": "fence takibi — in_fence bayrağı",
+      "split": "dev"
     },
     {
       "id": "q08",
       "question": "Çok uzun bir doküman bölümü ne oluyor, üst üste binen kısım var mı?",
-      "expect_files": ["codeqa/docs.py"]
+      "expect_files": [
+        "codeqa/docs.py"
+      ],
+      "split": "dev"
     },
     {
       "id": "q09",
       "question": "content_hash ne işe yarıyor?",
-      "expect_files": ["codeqa/models.py"]
+      "expect_files": [
+        "codeqa/models.py"
+      ],
+      "split": "dev"
     },
     {
       "id": "q10",
       "question": "Embedding'e gönderilen metin tam olarak neyi içeriyor?",
-      "expect_files": ["codeqa/models.py", "codeqa/embeddings.py"],
-      "note": "embed_text = context + text; embed_records bunu kullanıyor"
+      "expect_files": [
+        "codeqa/models.py",
+        "codeqa/embeddings.py"
+      ],
+      "note": "embed_text = context + text; embed_records bunu kullanıyor",
+      "split": "dev"
     },
     {
       "id": "q11",
       "question": "Hangi embedding sağlayıcıları destekleniyor?",
-      "expect_files": ["codeqa/embeddings.py"],
-      "expect_symbols": ["get_embedder"]
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "expect_symbols": [
+        "get_embedder"
+      ],
+      "split": "dev"
     },
     {
       "id": "q12",
       "question": "Kodu dışarı göndermeden local bir model nasıl kullanılır?",
-      "expect_files": ["codeqa/embeddings.py"],
-      "note": "dolaylı anlatım — 'Ollama' kelimesi soruda geçmiyor"
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "note": "dolaylı anlatım — 'Ollama' kelimesi soruda geçmiyor",
+      "split": "dev"
     },
     {
       "id": "q13",
       "question": "Hesaplanan vektörler nerede saklanıyor?",
-      "expect_files": ["codeqa/embeddings.py"],
-      "expect_symbols": ["EmbeddingCache"]
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "expect_symbols": [
+        "EmbeddingCache"
+      ],
+      "split": "dev"
     },
     {
       "id": "q14",
       "question": "Aynı parça her indekslemede yeniden embed ediliyor mu?",
-      "expect_files": ["codeqa/embeddings.py"],
-      "expect_symbols": ["embed_records"]
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "expect_symbols": [
+        "embed_records"
+      ],
+      "split": "dev"
     },
     {
       "id": "q15",
       "question": "getUserOrders gibi bir isim arama sırasında nasıl işleniyor?",
-      "expect_files": ["codeqa/embeddings.py"],
-      "expect_symbols": ["tokenize"]
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "expect_symbols": [
+        "tokenize"
+      ],
+      "split": "dev"
     },
     {
       "id": "q16",
       "question": "BM25 sonuçlarıyla vektör araması sonuçları nasıl birleştiriliyor?",
-      "expect_files": ["codeqa/search.py"],
-      "expect_symbols": ["reciprocal_rank_fusion"]
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "expect_symbols": [
+        "reciprocal_rank_fusion"
+      ],
+      "split": "dev"
     },
     {
       "id": "q17",
       "question": "Hiçbir şeye benzemeyen bir sorgu atılırsa ne dönüyor?",
-      "expect_files": ["codeqa/search.py"],
-      "note": "sıfır benzerlik eşiği"
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "sıfır benzerlik eşiği",
+      "split": "dev"
     },
     {
       "id": "q18",
       "question": "Model kodu okumak için hangi araçları kullanabiliyor?",
-      "expect_files": ["codeqa/answer.py"]
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "split": "dev"
     },
     {
       "id": "q19",
       "question": "Model repo dışındaki bir dosyayı okuyabilir mi?",
-      "expect_files": ["codeqa/answer.py"],
-      "note": "güvenlik — yol repo köküne hapsedilmiş"
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "note": "güvenlik — yol repo köküne hapsedilmiş",
+      "split": "dev"
     },
     {
       "id": "q20",
       "question": "Model olmayan bir satır numarasına referans verirse bu nasıl yakalanıyor?",
-      "expect_files": ["codeqa/answer.py"],
-      "expect_symbols": ["verify_citations"]
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "expect_symbols": [
+        "verify_citations"
+      ],
+      "split": "dev"
+    },
+    {
+      "id": "q21",
+      "split": "test",
+      "question": "Arama sonuçlarına alaka sırasının arkasından hangi durumlarda parça ekleniyor?",
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "Üç genişletme ekseni"
+    },
+    {
+      "id": "q22",
+      "split": "test",
+      "question": "Metotsuz sınıf parçaları neden geri plana atılıyor?",
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "chunk_weight / TYPE_ONLY_WEIGHT"
+    },
+    {
+      "id": "q23",
+      "split": "test",
+      "question": "Hiçbir değer taşımayan modül parçası nasıl anlaşılıyor?",
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "is_reexport_module"
+    },
+    {
+      "id": "q24",
+      "split": "test",
+      "question": "Arama modu verilmediğinde hangisi seçiliyor?",
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "resolve_mode"
+    },
+    {
+      "id": "q25",
+      "split": "test",
+      "question": "Bir dosyayı kimlerin kullandığı bilgisi nereden çıkarılıyor?",
+      "expect_files": [
+        "codeqa/search.py"
+      ],
+      "note": "import grafiği"
+    },
+    {
+      "id": "q26",
+      "split": "test",
+      "question": "Güven aralığı nasıl hesaplanıyor?",
+      "expect_files": [
+        "codeqa/evaluation.py"
+      ],
+      "note": "wilson_interval"
+    },
+    {
+      "id": "q27",
+      "split": "test",
+      "question": "Sembol beklentisi olmayan sorular metriği neden şişirmiyor?",
+      "expect_files": [
+        "codeqa/evaluation.py"
+      ],
+      "note": "symbol_recall None dönüyor"
+    },
+    {
+      "id": "q28",
+      "split": "test",
+      "question": "Çok dosyaya yayılan sorularda hangi ölçüt kullanılıyor?",
+      "expect_files": [
+        "codeqa/evaluation.py"
+      ],
+      "note": "retrieval_coverage"
+    },
+    {
+      "id": "q29",
+      "split": "test",
+      "question": "Soru setinin dev ve test yarıları nasıl ayrılıyor?",
+      "expect_files": [
+        "codeqa/evaluation.py"
+      ],
+      "note": "load_questions split"
+    },
+    {
+      "id": "q30",
+      "split": "test",
+      "question": "Bir ölçüm koşusunun kaydı nereye yazılıyor?",
+      "expect_files": [
+        "codeqa/evaluation.py"
+      ],
+      "note": "runs/ altına JSON"
+    },
+    {
+      "id": "q31",
+      "split": "test",
+      "question": "Model kaç tur tool çağırabiliyor ve neden sınır var?",
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "note": "MAX_ITERATIONS"
+    },
+    {
+      "id": "q32",
+      "split": "test",
+      "question": "Tek seferde en fazla kaç satır okunabiliyor?",
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "note": "MAX_READ_LINES"
+    },
+    {
+      "id": "q33",
+      "split": "test",
+      "question": "Hangi modellerde adaptive thinking kullanılabiliyor?",
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "note": "supports_adaptive_thinking"
+    },
+    {
+      "id": "q34",
+      "split": "test",
+      "question": "Cevap metninden referanslar nasıl çıkarılıyor?",
+      "expect_files": [
+        "codeqa/answer.py"
+      ],
+      "note": "extract_citations regex"
+    },
+    {
+      "id": "q35",
+      "split": "test",
+      "question": "Embedding sağlayıcısı hız limitine takılınca ne oluyor?",
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "note": "retry_on_rate_limit"
+    },
+    {
+      "id": "q36",
+      "split": "test",
+      "question": "Bazı modeller metnin başına ek istiyor; bu nerede yönetiliyor?",
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "note": "TASK_PREFIXES"
+    },
+    {
+      "id": "q37",
+      "split": "test",
+      "question": "Önbellek diske yazılırken yarıda kesilme riski nasıl önleniyor?",
+      "expect_files": [
+        "codeqa/embeddings.py"
+      ],
+      "note": "geçici dosya + replace"
+    },
+    {
+      "id": "q38",
+      "split": "test",
+      "question": "Yeniden sıralama (rerank) nasıl devreye giriyor?",
+      "expect_files": [
+        "codeqa/rerank.py"
+      ],
+      "note": "get_reranker"
+    },
+    {
+      "id": "q39",
+      "split": "test",
+      "question": "Parçalara LLM ile bağlam cümlesi ekleme nerede yapılıyor?",
+      "expect_files": [
+        "codeqa/contextual.py"
+      ],
+      "note": "ContextGenerator"
+    },
+    {
+      "id": "q40",
+      "split": "test",
+      "question": "MCP istemcisine sonuç hangi biçimde gösteriliyor?",
+      "expect_files": [
+        "codeqa/mcp_server.py"
+      ],
+      "note": "format_hit"
     }
-  ]
+  ],
+  "_bolme_notu": "q01-q20 dev, q21-q40 test. Eskiden bölme YOKTU — Kural 1 ihlaliydi. Mevcut 20 soru geçmiş ayar denemelerinde kullanıldığı için kirli sayılıp dev'e konuldu; q21-q40 hiç görülmedi. UYARI: q21-q40 LLM tarafından yazıldı ve bu sette ek bir sakınca var — ui.py ve projects.py'yi aynı LLM yazdı, o yüzden sorular bilerek diğer modüllere odaklandı. Yine de insan gözden geçirmeli."
 }

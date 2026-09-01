@@ -1,0 +1,385 @@
+{
+  "_aciklama": "İkinci Python kod tabanı: Saleor (açık kaynak e-ticaret, Django). Devir belgesinin 1 numaralı maddesi — 'bütün ölçümler tek repodan' sorununu kapatmak için. Repo seçimi bilinçli: anthropic SDK bir kütüphane ve büyük kısmı üretilmiş kod; Saleor elle yazılmış bir iş uygulaması (ürün, fiyat, sipariş, ödeme, stok, vergi) ve müşteri projelerine çok daha yakın. İndeks bileşimi eşitlendi: test ve migration dizinleri dışlandı, geriye 1060 dosya kaldı (anthropic SDK 1099). Kural 4 böylece sağlanıyor. NOT: indeks depo kökünden alındığı için yollar 'saleor/' önekli.",
+  "_yontem": "UYARI — bu set LLM tarafından yazıldı, insan tarafından değil. Yöntem: sorular kodun içi OKUNMADAN, bir e-ticaret projesine yeni giren birinin soracağı türden yazıldı; sonra expect_files GREP ile işaretlendi (codeqa ile DEĞİL — ölçülen aracı etiketlemede kullanmak %100'ü garantilerdi). Yine de bu bir taslak: rapor edilecek bir sayı üretmeden önce insan gözden geçirmeli ve setin TAMAMI geçirilmeli, sadece kaçırılanlar değil (Kural 3).",
+  "_bolme": "s01-s14 dev, s15-s40 test. Test bölmesi bilerek büyük tutuldu: n=14'te %100 sonucun %95 güven aralığı %78-100 (22 puan), n=26'da %87-100 (13 puan). Soru sayısı doğruluğu artırmıyor, tahminin kesinliğini artırıyor.",
+  "repo": "repos/saleor",
+  "index": "data/saleor.jsonl",
+  "questions": [
+    {
+      "id": "s01",
+      "split": "dev",
+      "question": "Bir ürünün fiyatı nerede tanımlanıyor?",
+      "expect_files": [
+        "saleor/product/models.py"
+      ],
+      "note": "ProductChannelListing / ProductVariantChannelListing — fiyat kanal bazlı"
+    },
+    {
+      "id": "s02",
+      "split": "dev",
+      "question": "Bir siparişin alabileceği durumlar nerede listelenmiş?",
+      "expect_files": [
+        "saleor/order/__init__.py"
+      ],
+      "note": "OrderStatus, OrderChargeStatus, OrderAuthorizeStatus"
+    },
+    {
+      "id": "s03",
+      "split": "dev",
+      "question": "Vergi ayarları ve vergi sınıfları hangi modelde tutuluyor?",
+      "expect_files": [
+        "saleor/tax/models.py"
+      ],
+      "note": "TaxClass, TaxConfiguration"
+    },
+    {
+      "id": "s04",
+      "split": "dev",
+      "question": "İndirim kuponları hangi modelde tanımlı?",
+      "expect_files": [
+        "saleor/discount/models.py"
+      ],
+      "note": "Voucher, VoucherCode aynı dosyada"
+    },
+    {
+      "id": "s05",
+      "split": "dev",
+      "question": "Depodaki stok miktarı hangi modelde tutuluyor?",
+      "expect_files": [
+        "saleor/warehouse/models.py"
+      ],
+      "note": "Stock, Allocation, Reservation"
+    },
+    {
+      "id": "s06",
+      "split": "dev",
+      "question": "Kargo yöntemleri ve ücretleri nerede tanımlanıyor?",
+      "expect_files": [
+        "saleor/shipping/models.py"
+      ],
+      "note": "ShippingMethod, ShippingMethodChannelListing"
+    },
+    {
+      "id": "s07",
+      "split": "dev",
+      "question": "Hediye kartı ve bakiyesi nerede tutuluyor?",
+      "expect_files": [
+        "saleor/giftcard/models.py"
+      ],
+      "note": "GiftCard modeli"
+    },
+    {
+      "id": "s08",
+      "split": "dev",
+      "question": "Fatura kaydı hangi modelde tutuluyor?",
+      "expect_files": [
+        "saleor/invoice/models.py"
+      ],
+      "note": "Invoice, InvoiceEvent"
+    },
+    {
+      "id": "s09",
+      "split": "dev",
+      "question": "Satış kanalı (channel) nerede tanımlı ve neyi belirliyor?",
+      "expect_files": [
+        "saleor/channel/models.py"
+      ],
+      "note": "Channel modeli — para birimi ve ülke burada"
+    },
+    {
+      "id": "s10",
+      "split": "dev",
+      "question": "Kullanıcı hesabı ve adresleri hangi modelde?",
+      "expect_files": [
+        "saleor/account/models.py"
+      ],
+      "note": "User, Address"
+    },
+    {
+      "id": "s11",
+      "split": "dev",
+      "question": "Sepetten siparişe geçerken hangi adımlar işliyor?",
+      "expect_files": [
+        "saleor/checkout/complete_checkout.py"
+      ],
+      "note": "complete_checkout → _create_order zinciri"
+    },
+    {
+      "id": "s12",
+      "split": "dev",
+      "question": "Sipariş toplamı hesaplanırken vergi ve indirim nasıl uygulanıyor?",
+      "expect_files": [
+        "saleor/order/calculations.py",
+        "saleor/order/base_calculations.py"
+      ],
+      "note": "fetch_order_prices_if_expired + base hesap"
+    },
+    {
+      "id": "s13",
+      "split": "dev",
+      "question": "Sepet toplamı nasıl hesaplanıyor?",
+      "expect_files": [
+        "saleor/checkout/calculations.py",
+        "saleor/checkout/base_calculations.py"
+      ],
+      "note": "fetch_checkout_data + calculate_checkout_total"
+    },
+    {
+      "id": "s14",
+      "split": "dev",
+      "question": "Bir ödeme alındığında para tahsil edilene kadar ne oluyor?",
+      "expect_files": [
+        "saleor/payment/gateway.py",
+        "saleor/payment/utils.py"
+      ],
+      "note": "request_charge_action; authorize/capture"
+    },
+    {
+      "id": "s15",
+      "split": "test",
+      "question": "İade yapıldığında hangi kayıtlar güncelleniyor?",
+      "expect_files": [
+        "saleor/order/actions.py",
+        "saleor/payment/utils.py"
+      ],
+      "note": "refund akışı sipariş olaylarını da yazıyor"
+    },
+    {
+      "id": "s16",
+      "split": "test",
+      "question": "Bir ürün stoktan düşülene kadar hangi adımlardan geçiyor?",
+      "expect_files": [
+        "saleor/warehouse/management.py"
+      ],
+      "note": "allocate_stocks / deallocate_stock"
+    },
+    {
+      "id": "s17",
+      "split": "test",
+      "question": "Webhook'lar hangi olaylarda tetikleniyor ve gönderme işini kim yapıyor?",
+      "expect_files": [
+        "saleor/core/utils/events.py",
+        "saleor/webhook/transport/asynchronous/transport.py"
+      ],
+      "note": "call_event → trigger_webhooks_async"
+    },
+    {
+      "id": "s18",
+      "split": "test",
+      "question": "Ürün araması nasıl yapılıyor?",
+      "expect_files": [
+        "saleor/product/search.py"
+      ],
+      "note": "search_vector hazırlama"
+    },
+    {
+      "id": "s19",
+      "split": "test",
+      "question": "Yetki ve izinler nerede tanımlı?",
+      "expect_files": [
+        "saleor/permission/enums.py"
+      ],
+      "note": "Modül bazlı izin enum'ları"
+    },
+    {
+      "id": "s20",
+      "split": "test",
+      "question": "Oturum jetonu (JWT) nerede üretilip doğrulanıyor?",
+      "expect_files": [
+        "saleor/core/jwt.py"
+      ],
+      "note": "create_access_token / jwt_decode"
+    },
+    {
+      "id": "s21",
+      "split": "test",
+      "question": "Ürün görsellerinin küçük hâlleri nasıl üretiliyor?",
+      "expect_files": [
+        "saleor/thumbnail/utils.py",
+        "saleor/thumbnail/models.py"
+      ],
+      "note": "Thumbnail modeli + üretim yardımcıları"
+    },
+    {
+      "id": "s22",
+      "split": "test",
+      "question": "Sipariş numarası nasıl üretiliyor?",
+      "expect_files": [
+        "saleor/order/models.py"
+      ],
+      "note": "number alanı ve sıralayıcı"
+    },
+    {
+      "id": "s23",
+      "split": "test",
+      "question": "Müşteriye giden e-posta bildirimleri nereden tetikleniyor?",
+      "expect_files": [
+        "saleor/plugins/user_email/notify_events.py"
+      ],
+      "note": "Eklenti üzerinden; notify event'leri"
+    },
+    {
+      "id": "s24",
+      "split": "test",
+      "question": "İçerik sayfaları ve menüler hangi modellerde?",
+      "expect_files": [
+        "saleor/page/models.py",
+        "saleor/menu/models.py"
+      ],
+      "note": "Page ve Menu ayrı uygulamalarda"
+    },
+    {
+      "id": "s25",
+      "split": "test",
+      "question": "Üçüncü taraf uygulamalar ve erişim jetonları nerede tutuluyor?",
+      "expect_files": [
+        "saleor/app/models.py"
+      ],
+      "note": "App, AppToken"
+    },
+    {
+      "id": "s26",
+      "split": "test",
+      "question": "Ürün verisi CSV olarak nasıl dışa aktarılıyor?",
+      "expect_files": [
+        "saleor/csv/utils/export.py"
+      ],
+      "note": "export_products"
+    },
+    {
+      "id": "s27",
+      "split": "test",
+      "question": "Kargo bölgeleri ve hangi ülkelere gönderim yapıldığı nerede?",
+      "expect_files": [
+        "saleor/shipping/models.py"
+      ],
+      "note": "ShippingZone"
+    },
+    {
+      "id": "s28",
+      "split": "test",
+      "question": "Ürün çevirileri (çok dilli içerik) nerede tutuluyor?",
+      "expect_files": [
+        "saleor/product/models.py"
+      ],
+      "note": "ProductTranslation ve kardeşleri"
+    },
+    {
+      "id": "s29",
+      "split": "test",
+      "question": "Stokta rezervasyon ile tahsis arasındaki fark nerede kuruluyor?",
+      "expect_files": [
+        "saleor/warehouse/reservations.py",
+        "saleor/warehouse/management.py"
+      ],
+      "note": "Reservation geçici, Allocation kalıcı — iki ayrı mekanizma"
+    },
+    {
+      "id": "s30",
+      "split": "test",
+      "question": "Kupon indirimi ile elle verilen indirim ayrı ayrı yazılmış; hangisi nerede?",
+      "expect_files": [
+        "saleor/discount/utils/voucher.py",
+        "saleor/discount/utils/manual_discount.py"
+      ],
+      "note": "Birbirine çok benzeyen iki yol"
+    },
+    {
+      "id": "s31",
+      "split": "test",
+      "question": "Vergi hem yerleşik hesapla hem eklentiyle hesaplanabiliyor; ikisi nerede ayrılıyor?",
+      "expect_files": [
+        "saleor/order/calculations.py",
+        "saleor/plugins/manager.py"
+      ],
+      "note": "calculations manager'a soruyor, manager eklentiye deleg ediyor"
+    },
+    {
+      "id": "s32",
+      "split": "test",
+      "question": "Sepet ve sipariş ayrı satır modelleri tutuyor; fiyat hesabı nerede ortaklaşıyor?",
+      "expect_files": [
+        "saleor/checkout/base_calculations.py",
+        "saleor/order/base_calculations.py"
+      ],
+      "note": "Ortak değiller — iki ayrı base_calculations"
+    },
+    {
+      "id": "s33",
+      "split": "test",
+      "question": "Kargo ücreti fiyata ve ağırlığa göre iki farklı yöntemle hesaplanabiliyor; bu nerede?",
+      "expect_files": [
+        "saleor/shipping/models.py"
+      ],
+      "note": "price_based / weight_based"
+    },
+    {
+      "id": "s34",
+      "split": "test",
+      "question": "Brüt ve net fiyat ayrımı nerede yapılıyor, yuvarlama nerede?",
+      "expect_files": [
+        "saleor/core/prices.py",
+        "saleor/core/taxes.py"
+      ],
+      "note": "quantize_price + TaxedMoney"
+    },
+    {
+      "id": "s35",
+      "split": "test",
+      "question": "Ürün özellikleri farklı tiplerde olabiliyor; bu tipler nerede tanımlı?",
+      "expect_files": [
+        "saleor/attribute/__init__.py"
+      ],
+      "note": "AttributeInputType, AttributeEntityType"
+    },
+    {
+      "id": "s36",
+      "split": "test",
+      "question": "Sipariş satırı ile sepet satırı hangi modellerde ve neyi farklı tutuyorlar?",
+      "expect_files": [
+        "saleor/order/models.py",
+        "saleor/checkout/models.py"
+      ],
+      "note": "OrderLine fiyatı donduruyor, CheckoutLine tutmuyor"
+    },
+    {
+      "id": "s37",
+      "split": "test",
+      "question": "Bir promosyon kuralı hangi ürünlere uygulanacağına nasıl karar veriyor?",
+      "expect_files": [
+        "saleor/discount/models.py"
+      ],
+      "note": "PromotionRule + catalogue predicate"
+    },
+    {
+      "id": "s38",
+      "split": "test",
+      "question": "Ödeme sağlayıcıları sisteme nasıl takılıyor?",
+      "expect_files": [
+        "saleor/payment/gateway.py",
+        "saleor/plugins/manager.py"
+      ],
+      "note": "Eklenti mimarisi üzerinden"
+    },
+    {
+      "id": "s39",
+      "split": "test",
+      "question": "Bir siparişin geçmişi (kim ne zaman ne yaptı) nerede tutuluyor?",
+      "expect_files": [
+        "saleor/order/events.py",
+        "saleor/order/models.py"
+      ],
+      "note": "OrderEvent modeli + olay üreten yardımcılar"
+    },
+    {
+      "id": "s40",
+      "split": "test",
+      "question": "Ürün araması ile sipariş araması ayrı ayrı yazılmış; ikisi nerede ve nasıl farklılar?",
+      "expect_files": [
+        "saleor/product/search.py",
+        "saleor/order/search.py"
+      ],
+      "note": "İki ayrı search_vector hazırlığı — ayırt etmesi zor"
+    }
+  ]
+}

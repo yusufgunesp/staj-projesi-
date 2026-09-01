@@ -129,24 +129,43 @@ def test_question_defaults_to_dev_split():
     assert question.split == "dev"
 
 
+#: Setler zaman içinde büyüyor; test onları dondurmamalı. Sayıyı eşitlik yerine
+#: alt sınırla kontrol etmek bozulmayı (silinmiş soru, boş etiket, kaybolan bölme)
+#: yine yakalıyor ama soru eklemeyi engellemiyor. Eşitlik yazıldığında her büyütme
+#: testi kırıyordu ve testi güncellemek işin bir parçası hâline geliyordu.
+def assert_question_set_sound(questions, *, en_az: int) -> None:
+    """Bir soru setinin yapısal olarak sağlam olduğunu doğrular."""
+    assert len(questions) >= en_az
+    assert all(q.expect_files for q in questions), "etiketsiz soru var"
+    assert all(q.split in ("dev", "test") for q in questions), "geçersiz bölme"
+    ids = [q.id for q in questions]
+    assert len(ids) == len(set(ids)), "yinelenen soru id'si"
+    # Kural 1: ayar yapılan sette rapor verilmez — iki bölme de dolu olmalı.
+    assert any(q.split == "dev" for q in questions)
+    assert any(q.split == "test" for q in questions)
+
+
 def test_anthropic_question_set_is_valid():
     """Büyük soru seti bozulmamış ve dev/test dengeli olmalı."""
     questions, settings = load_questions("eval/questions_anthropic.json")
-    dev = [q for q in questions if q.split == "dev"]
-    test = [q for q in questions if q.split == "test"]
-
-    assert len(questions) == 60
-    assert len(dev) == 40 and len(test) == 20
-    assert all(q.expect_files for q in questions)
+    assert_question_set_sound(questions, en_az=60)
     assert settings["index"] == "data/anthropic.jsonl"
 
 
 def test_project_question_set_is_valid():
     """Repodaki gerçek soru seti bozulmamış olmalı."""
     questions, settings = load_questions("eval/questions.json")
-    assert len(questions) == 20
+    assert_question_set_sound(questions, en_az=20)
     assert settings["repo"] == "."
-    assert all(q.expect_files for q in questions)
+
+
+def test_saleor_question_set_is_valid():
+    """İkinci kod tabanının seti: 'bütün ölçümler tek repodan' sorununu kapatan set."""
+    questions, settings = load_questions("eval/questions_saleor.json")
+    assert_question_set_sound(questions, en_az=40)
+    assert settings["index"] == "data/saleor.jsonl"
+    # Yollar depo kökünden alınmış indekse göre önekli; önek düşerse hepsi kaçar.
+    assert all(f.startswith("saleor/") for q in questions for f in q.expect_files)
 
 
 # --- getirme ölçümü ----------------------------------------------------------
@@ -315,13 +334,19 @@ def test_coverage_is_computed_from_expected_files(searcher):
 
 
 def test_akis_question_set_is_valid():
-    """Zor set bozulmamış ve gerçekten çok dosyalı olmalı."""
-    questions, settings = load_questions("eval/questions_akis.json")
+    """Akış seti bozulmamış ve gerçekten çok dosyalı olmalı."""
+    questions, _ = load_questions("eval/questions_akis.json")
     multi = [q for q in questions if len(q.expect_files) > 1]
 
-    assert len(questions) == 20
+    assert_question_set_sound(questions, en_az=20)
     assert len(multi) >= 8, "akış seti çok dosyalı sorular içermeli"
-    assert settings["index"] == "data/anthropic_ctx.jsonl"
+
+
+def test_zor_question_set_is_valid():
+    """Zor set: raporlanan sayı buradan geliyor, bölme kaybolmamalı."""
+    questions, settings = load_questions("eval/questions_zor.json")
+    assert_question_set_sound(questions, en_az=26)
+    assert settings["index"] == "data/anthropic.jsonl"
 
 
 def test_symbol_recall_is_none_when_no_question_expects_symbols():
