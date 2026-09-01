@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .answer import resolve_in_repo
+from .indexer import DEFAULT_EXCLUDES
 from .mcp_server import IndexNotReady, load_searcher
 from .projects import (
     DEFAULT_REGISTRY,
@@ -283,13 +284,19 @@ class UIServer(ThreadingHTTPServer):
         provider = payload.get("provider") or "voyage"
         name = (payload.get("name") or "").strip() or Path(repo).expanduser().name
         index_path = self.data_dir / f"{slugify(name)}.jsonl"
+        # Dışlama olmadan, içinde klonlanmış repo taşıyan bir proje taranınca
+        # sayı ve maliyet on katına çıkıyor. CLI'da `--exclude` var; arayüzde de
+        # olmalı, yoksa kullanıcı sebebini anlamadan büyük bir tutar görüyor.
+        extra = {x.strip() for x in (payload.get("exclude") or "").split(",") if x.strip()}
         result = scan_repo(
             repo,
             index_path,
             provider=provider,
             model=payload.get("model") or None,
             no_docs=bool(payload.get("no_docs")),
+            excludes=frozenset(DEFAULT_EXCLUDES | extra),
         )
+        result["exclude"] = ", ".join(sorted(extra))
         result["id"] = slugify(name)
         result["name"] = name
         return result
