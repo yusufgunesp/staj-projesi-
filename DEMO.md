@@ -3,7 +3,12 @@
 **Süre:** ~14 dakika, ikinci canlı soruyla ~16 · **Dinleyici:** yazılımcı olmayabilir ·
 **Toplam maliyet:** ~5 sent (ölçüldü: canlı soru başına 0,6-2,2 sent, geri kalanı bedava)
 
-Her adımda önce **ne soracağın**, sonra **ne söyleyeceğin** var. Komutlar birebir kopyalanabilir.
+Her adımda önce **ne soracağın**, sonra **ne söyleyeceğin** var.
+
+> **Komutları buradan kopyalama.** Bu dosya ham markdown olarak açılırsa kod bloğunun ` ``` `
+> tırnakları da kopyalanır; zsh onları komut ikamesi sayıp iç içe bir kabuk açar ve sonraki
+> komutlar **sessizce koşmaz**. Provada tam olarak bu oldu. Kopyalamak için yanına
+> [DEMO_KOMUTLAR.txt](DEMO_KOMUTLAR.txt) aç — tırnaksız, doğrudan yapıştırılır.
 
 ---
 

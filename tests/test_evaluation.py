@@ -426,3 +426,23 @@ def test_mean_interval_handles_fractional_coverage():
     alt, ust = mean_interval([1.0, 0.5, 1.0, 0.5, 1.0])
     assert alt < 0.8 < ust
     assert mean_interval([1.0]) == (0.0, 0.0)  # tek gözlemde aralık tanımsız
+
+
+def test_demo_komutlari_guncel():
+    """DEMO_KOMUTLAR.txt, DEMO.md ile eşit olmalı.
+
+    Provada çıktı: senaryo ham markdown olarak açılınca kod bloğunun ```
+    tırnakları da kopyalanıyor ve zsh onları komut ikamesi sayıp iç içe bir
+    kabuk açıyor — sonraki komutlar sessizce koşmuyor. Düz metin kopya bunun
+    için var; DEMO.md değişip bu dosya kalırsa demoda yanlış komut kopyalanır.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path("tools").resolve()))
+    from komutlari_cikar import uret
+
+    beklenen = uret(Path("DEMO.md").read_text(encoding="utf-8"))
+    assert Path("DEMO_KOMUTLAR.txt").read_text(encoding="utf-8") == beklenen, (
+        "DEMO.md değişmiş — `python3 tools/komutlari_cikar.py` çalıştırın."
+    )
