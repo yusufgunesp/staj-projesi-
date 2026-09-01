@@ -168,8 +168,21 @@ class CodebaseAnswerer:
 
     @staticmethod
     def _format_hit(hit: SearchHit) -> str:
+        """Parçayı modele satır numaralarıyla verir.
+
+        Numarasız verildiğinde model yalnızca parçanın **başlangıç** satırını
+        referans gösterebiliyordu: `_constants.py:3` deyip aslında 10. satırdaki
+        `DEFAULT_MAX_RETRIES`'i kastediyordu. Referansı açan kişi ilgisiz bir
+        satır görüyordu — oysa aracın bütün iddiası referansın kontrol
+        edilebilmesi. `read_file` zaten numaralı veriyor; bağlam da vermeli.
+        """
         header = f"--- {hit.location}  [{hit.record['kind']}] {hit.name}"
-        return f"{header}\n{hit.record['text']}"
+        start = int(hit.record["start_line"])
+        body = "\n".join(
+            f"{start + offset:>5} | {line}"
+            for offset, line in enumerate(hit.record["text"].splitlines())
+        )
+        return f"{header}\n{body}"
 
     def build_context(self, hits: list[SearchHit]) -> str:
         """Bulunan parçaları modele verilecek metne çevirir."""
