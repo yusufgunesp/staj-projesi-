@@ -16,7 +16,7 @@
     },
     {
       "id": "s02",
-      "split": "dev",
+      "split": "test",
       "question": "Bir siparişin alabileceği durumlar nerede listelenmiş?",
       "expect_files": [
         "saleor/order/__init__.py"
@@ -25,7 +25,7 @@
     },
     {
       "id": "s03",
-      "split": "dev",
+      "split": "test",
       "question": "Vergi ayarları ve vergi sınıfları hangi modelde tutuluyor?",
       "expect_files": [
         "saleor/tax/models.py"
@@ -43,7 +43,7 @@
     },
     {
       "id": "s05",
-      "split": "dev",
+      "split": "test",
       "question": "Depodaki stok miktarı hangi modelde tutuluyor?",
       "expect_files": [
         "saleor/warehouse/models.py"
@@ -52,7 +52,7 @@
     },
     {
       "id": "s06",
-      "split": "dev",
+      "split": "test",
       "question": "Kargo yöntemleri ve ücretleri nerede tanımlanıyor?",
       "expect_files": [
         "saleor/shipping/models.py"
@@ -70,7 +70,7 @@
     },
     {
       "id": "s08",
-      "split": "dev",
+      "split": "test",
       "question": "Fatura kaydı hangi modelde tutuluyor?",
       "expect_files": [
         "saleor/invoice/models.py"
@@ -79,7 +79,7 @@
     },
     {
       "id": "s09",
-      "split": "dev",
+      "split": "test",
       "question": "Satış kanalı (channel) nerede tanımlı ve neyi belirliyor?",
       "expect_files": [
         "saleor/channel/models.py"
@@ -97,7 +97,7 @@
     },
     {
       "id": "s11",
-      "split": "dev",
+      "split": "test",
       "question": "Sepetten siparişe geçerken hangi adımlar işliyor?",
       "expect_files": [
         "saleor/checkout/complete_checkout.py"
@@ -116,7 +116,7 @@
     },
     {
       "id": "s13",
-      "split": "dev",
+      "split": "test",
       "question": "Sepet toplamı nasıl hesaplanıyor?",
       "expect_files": [
         "saleor/checkout/calculations.py",
@@ -126,7 +126,7 @@
     },
     {
       "id": "s14",
-      "split": "dev",
+      "split": "test",
       "question": "Bir ödeme alındığında para tahsil edilene kadar ne oluyor?",
       "expect_files": [
         "saleor/payment/gateway.py",
@@ -136,7 +136,7 @@
     },
     {
       "id": "s15",
-      "split": "test",
+      "split": "dev",
       "question": "İade yapıldığında hangi kayıtlar güncelleniyor?",
       "expect_files": [
         "saleor/order/actions.py",
@@ -165,7 +165,7 @@
     },
     {
       "id": "s18",
-      "split": "test",
+      "split": "dev",
       "question": "Ürün araması nasıl yapılıyor?",
       "expect_files": [
         "saleor/product/search.py"
@@ -202,7 +202,7 @@
     },
     {
       "id": "s22",
-      "split": "test",
+      "split": "dev",
       "question": "Sipariş numarası nasıl üretiliyor?",
       "expect_files": [
         "saleor/order/models.py"
@@ -220,7 +220,7 @@
     },
     {
       "id": "s24",
-      "split": "test",
+      "split": "dev",
       "question": "İçerik sayfaları ve menüler hangi modellerde?",
       "expect_files": [
         "saleor/page/models.py",
@@ -239,7 +239,7 @@
     },
     {
       "id": "s26",
-      "split": "test",
+      "split": "dev",
       "question": "Ürün verisi CSV olarak nasıl dışa aktarılıyor?",
       "expect_files": [
         "saleor/csv/utils/export.py"
@@ -286,7 +286,7 @@
     },
     {
       "id": "s31",
-      "split": "test",
+      "split": "dev",
       "question": "Vergi hem yerleşik hesapla hem eklentiyle hesaplanabiliyor; ikisi nerede ayrılıyor?",
       "expect_files": [
         "saleor/order/calculations.py",
@@ -306,7 +306,7 @@
     },
     {
       "id": "s33",
-      "split": "test",
+      "split": "dev",
       "question": "Kargo ücreti fiyata ve ağırlığa göre iki farklı yöntemle hesaplanabiliyor; bu nerede?",
       "expect_files": [
         "saleor/shipping/models.py"
@@ -334,7 +334,7 @@
     },
     {
       "id": "s36",
-      "split": "test",
+      "split": "dev",
       "question": "Sipariş satırı ile sepet satırı hangi modellerde ve neyi farklı tutuyorlar?",
       "expect_files": [
         "saleor/order/models.py",
@@ -373,7 +373,7 @@
     },
     {
       "id": "s40",
-      "split": "test",
+      "split": "dev",
       "question": "Ürün araması ile sipariş araması ayrı ayrı yazılmış; ikisi nerede ve nasıl farklılar?",
       "expect_files": [
         "saleor/product/search.py",
@@ -381,5 +381,6 @@
       ],
       "note": "İki ayrı search_vector hazırlığı — ayırt etmesi zor"
     }
-  ]
+  ],
+  "_bolme_notu": "ÖLÇÜM DÜZELTMESİ — sistem kazancı değil. İlk bölme zorluğa göre dengesizdi: dev'in %21'i çok dosyalıyken test'in %50'siydi, yani kolayda ayar yapıp zorda rapor etme durumu vardı ve dev ayar için kullanılamıyordu (yalnızca 3 çok dosyalı soru). Yeniden dağıtım kuralı sonuca BAKMIYOR: sorular etiketindeki dosya sayısına göre (tek/çok) gruplanıp id sırasına dizildi, her üçüncüsü dev'e kondu. Sonuç: dev 14 soru (%43 çok dosyalı), test 26 soru (%38). 18 sorunun bölmesi değişti. Uyarı: kural sonuca bakmıyor ama uygulayan sonuçları görmüştü; bu yüzden ölçüm düzeltmesi olarak işaretlendi."
 }
