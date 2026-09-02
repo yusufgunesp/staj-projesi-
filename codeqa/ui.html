@@ -257,6 +257,20 @@
   .loc::after { content: " \2193"; opacity: .45; }
   .sig { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; word-break: break-all; }
 
+  /* ---------- netleştirme öbekleri ---------- */
+  .facet {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--keep);
+    border-radius: 3px;
+    padding: 0.7rem 1.1rem;
+    margin-bottom: 0.4rem;
+    cursor: pointer;
+  }
+  .facet:hover { border-color: var(--rule-strong); border-left-color: var(--keep); }
+  .facet .dir { font-size: 0.86rem; color: var(--keep); font-weight: 500; }
+  .facet .bits { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+
   /* ---------- tarama önizlemesi ---------- */
   .grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
@@ -354,6 +368,7 @@
     <div class="row">
       <button class="primary" id="ask">Sor</button>
       <button id="search">Sadece ara</button>
+      <button id="facets">Netleştir</button>
       <span class="hint" id="hint"></span>
     </div>
   </div>
@@ -485,6 +500,36 @@ $('#search').onclick = async () => {
     $('#out').innerHTML = d.hits.length
       ? renderHits(d.hits, `${d.hits.length} parça · konuma tıkla, kaynağı aç`)
       : '<div class="err">Sonuç yok.</div>';
+  } catch (e) { $('#out').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  setBusy(false);
+};
+
+function renderFacets(d) {
+  if (!d.facets.length) return '<div class="err">Öbek çıkmadı.</div>';
+  return `<div class="hint" style="margin-bottom:10px">${esc(d.query)} — havuzda ${d.facets.length} ayrı okuma. Birine tıkla, o okumayla yeniden aransın.</div>`
+    + d.facets.map((f, i) => `
+      <div class="facet" data-i="${i}">
+        <div class="dir">${esc(f.directory)}</div>
+        <div class="bits">${f.chunks} parça${f.children_total
+            ? ' · ' + esc(f.children.join(', ')) + (f.children_total > f.children.length ? ` +${f.children_total - f.children.length}` : '')
+            : ' · ' + esc(f.symbols.join(', '))}</div>
+      </div>`).join('')
+    + `<div class="note"><b>Öbekler ölçüm değil<span class="tag">n=0</span></b><br>
+       Bunlar aramanın havuzunda hangi dizinlerin toplandığını gösteriyor, hangisinin
+       <b>doğru</b> olduğunu değil. Sıralamaya dokunulmuyor; bir öbek seçilince arama
+       yeni sorguyla baştan koşuyor.</div>`;
+}
+
+$('#facets').onclick = async () => {
+  const q = $('#q').value.trim();
+  if (!q || busy) return;
+  setBusy(true, 'öbekleniyor…');
+  try {
+    const d = await api('/api/facets', {project: activeId(), query: q});
+    $('#out').innerHTML = renderFacets(d);
+    $('#out').querySelectorAll('.facet').forEach(el => {
+      el.onclick = () => { $('#q').value = d.facets[+el.dataset.i].query; $('#search').click(); };
+    });
   } catch (e) { $('#out').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   setBusy(false);
 };

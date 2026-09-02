@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .answer import resolve_in_repo
+from .facets import facets as build_facets
 from .indexer import DEFAULT_EXCLUDES
 from .mcp_server import IndexNotReady, load_searcher
 from .projects import (
@@ -170,6 +171,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         routes = {
             "/api/search": self.server.do_search,
+            "/api/facets": self.server.do_facets,
             "/api/ask": self.server.do_ask,
             "/api/source": self.server.do_source,
             "/api/projects/scan": self.server.do_scan,
@@ -370,6 +372,21 @@ class UIServer(ThreadingHTTPServer):
         searcher, _, mode = self.searcher_for(project)
         hits = searcher.search(query, k=int(payload.get("k") or 8), mode=mode)
         return {"project": project.id, "hits": [hit_payload(hit) for hit in hits]}
+
+    def do_facets(self, payload: dict) -> dict:
+        """Sorgunun havuzdaki öbekleri. Sıralamaya dokunmuyor, bir öbek
+        seçilirse `/api/search` yeni sorguyla baştan koşuyor."""
+        query = (payload.get("query") or "").strip()
+        if not query:
+            raise ValueError("Soru boş.")
+        project = self.find(payload.get("project"))
+        searcher, _, mode = self.searcher_for(project)
+        found = build_facets(searcher, query, mode=mode)
+        return {
+            "project": project.id,
+            "query": query,
+            "facets": [{**f.to_dict(), "query": f.query(query)} for f in found],
+        }
 
     def do_ask(self, payload: dict) -> dict:
         question = (payload.get("question") or "").strip()

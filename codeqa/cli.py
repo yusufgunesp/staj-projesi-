@@ -170,6 +170,20 @@ def _build_search(args: argparse.Namespace) -> HybridSearch:
 
 def cmd_search(args: argparse.Namespace) -> int:
     searcher = _build_search(args)
+
+    if getattr(args, "facets", False):
+        from .facets import facets as build_facets
+
+        found = build_facets(searcher, args.query, mode=args.mode)
+        if not found:
+            print("Öbek çıkmadı.")
+            return 1
+        print(f"{args.query!r} havuzda şu öbeklere ayrılıyor (ölçüm değil):\n")
+        for facet in found:
+            print(f"  {facet.label}")
+            print(f"      {facet.query(args.query)!r}")
+        return 0
+
     hits = searcher.search(args.query, k=args.limit, mode=args.mode)
 
     if not hits:
@@ -591,6 +605,11 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("-n", "--limit", type=int, default=5, help="Sonuç sayısı")
     search_parser.add_argument(
         "--lines", type=int, default=6, help="Parça başına gösterilecek satır"
+    )
+    search_parser.add_argument(
+        "--facets",
+        action="store_true",
+        help="Sonuç yerine sorgunun havuzdaki öbeklerini göster (netleştirme)",
     )
     search_parser.set_defaults(func=cmd_search)
 

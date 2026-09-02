@@ -200,6 +200,23 @@ Vektörler içerik karmasına göre `data/embeddings/` altında önbelleğe alı
 etiketi dahil edilerek hesaplanıyor — sadece kod metni üzerinden alınsaydı bir dosya taşındığında
 önbellekten eski bağlamla üretilmiş vektör dönerdi.
 
+### Netleştirme (isteğe bağlı)
+
+`codeqa search "ödeme" --facets`, arayüzde **Netleştir** düğmesi. Sıralamaya dokunmuyor: havuzun
+ilk 300 adayı dizin ağacına göre öbeklenip kullanıcıya geri gösteriliyor, bir öbek seçilirse arama
+yeni sorguyla baştan koşuyor.
+
+**Çözdüğü şey soyutlama seviyesi, dil değil.** Türkçe→İngilizce köprüsü zaten çalışıyor
+(`ödeme`→`payment`, `yetki`→`permission`, `stok`→`warehouse`; üçünde de doğru alan ilk sırada).
+Sorun şu: `"ödeme"` sorgusunun ilk sekizi baştan sona arayüz katmanı (`PaymentError`,
+`PaymentInterface`, `PaymentBase`), tek bir somut sağlayıcı yok. `"ödeme sağlayıcısına istek nasıl
+gönderiliyor"` ise tamamen `payment/gateways/*` getiriyor ve **iki listenin ilk sekizde ortak
+parçası sıfır.** Saleor'un sekiz ödeme entegrasyonunun ilk temsilcisi havuzda 15., çoğu 48-142
+arasında — ilk 8'i gruplamak hiçbirini göstermezdi.
+
+**Kazanç ilan edilmiyor**, sebebi [Öğrenilenler](#netleştirme-dizin-yapısı-anlam-taşıyorsa-çalışıyor)
+bölümünde.
+
 ### Claude Code entegrasyonu (MCP)
 
 Araç MCP sunucusu olarak çalışabiliyor; böylece geliştirici terminale gitmeden Claude Code'un
@@ -596,6 +613,43 @@ saniyeden 6,3 saniyeye indi.
 İkisi de teste bağlandı. İkincisinin testi zamanlama ölçmüyor (kırılgan olurdu); dizinin arşivden
 kaç kez açıldığını sayıyor.
 
+### Netleştirme: dizin yapısı anlam taşıyorsa çalışıyor
+
+Belirsiz sorguyu öbeklere ayırma fikri ölçüldü (`tools/netlestirme_olcumu.py`). Var olan sorular
+mekanik olarak 1-2 kelimeye daraltıldı, etiketler elle konmuş `expect_files`'tan alındı. Üç sayı:
+**düz** (bugünkü arama), **menü** (doğru dizin beş öbekten birinde mi), **tavan** (en iyi öbek
+seçilseydi). Test bölmeleri, tek kelimelik sorgu:
+
+| Set | n | düz | menü | tavan |
+|-----|---|-----|------|-------|
+| Saleor | 26 | 38% | 65% | 69% |
+| Zor | 26 | 65% | 58% | 77% |
+| Akış | 30 | 70% | 63% | 80% |
+| Kolay | 40 | 52% | 42% | 62% |
+
+**Tavan bir üst sınır, sistem kazancı değil** — öbeği etikete bakarak seçiyor, kullanıcı bunu
+yapamaz. Tavan sekiz hücrenin sekizinde de düzü geçiyor (iki kelimelik daraltmada da), yani yön
+tutarlı; §Reranking'in aksine bir sette kazanıp diğerinde kaybetmiyor. Ama güven aralıkları her
+yerde örtüşüyor, o yüzden büyüklük hakkında bir şey söylenemez.
+
+**Asıl bulgu zayıflıkta.** `menü` — arayüzün gerçekten verdiği söz — sekiz hücrenin beşinde düzün
+altında, en kötüsü anthropic SDK'sında (%42 ve %45'e karşı düz %52 ve %72). Sebep görülebiliyor:
+o indekste `"akış"` sorgusunun öbekleri `AsyncFilesWithStreamingResponse`,
+`AsyncDreamsWithStreamingResponse` gibi **üretilmiş sarmalayıcılarla** doluyor — dizinler API
+yüzeyini yansıtıyor, kavramı değil. Saleor'da ise `payment/gateways` altında
+adyen/braintree/razorpay duruyor, yani gerçek alan yapısı.
+
+Bu, [hibrit aramanın](#hibrit-arama-bedava-kazanç-değil) ve
+[çok dil desteğinin](#bir-dilde-ölçülen-başarım-başka-dili-öngörmüyor) bulgusuyla aynı şekil:
+**müdahale kod tabanına bağlı, ortalama almak yanıltıyor.** Özellik bu yüzden ayrı bir düğme,
+varsayılan aramanın yerine geçmiyor ve arayüz öbekleri doğruluk sayısı gibi sunmuyor.
+
+Ara adımda bir de şu ölçüldü ve reddedildi: öbeğe tıklayınca aramayı o dizine **hapsetmek**
+(`search_within`). Makul duruyordu — dev'de dört soruda doğru dizin menüdeydi ama tıklayınca
+dosya yine ilk 8'e girmemişti. Ölçüm tersini söyledi (dev tavan: zor %92 → %58, akış %80 → %70):
+beklenen dosya çoğu zaman en iyi eşleşen dizinin *dışında* kalıyor ve süzme onu tamamen eliyor.
+Sorguya sözcük eklemek elemediği için o dosyaya hâlâ ulaşabiliyor.
+
 ### Getirme ile cevap ayrı ayrı ölçülmeli, çünkü ikisi ayrı ayrı bozuluyor
 
 İki yönde de ayrıştıkları görüldü.
@@ -623,6 +677,7 @@ codeqa/
   docs.py        Markdown parçalayıcı
   embeddings.py  sağlayıcı arayüzü (Voyage / Ollama / hash) + disk önbelleği
   search.py      BM25, vektör araması, RRF birleştirme, genişletme eksenleri
+  facets.py      belirsiz sorguyu dizin ağacına göre öbekleme (isteğe bağlı, ölçüldü)
   rerank.py      Voyage rerank-2.5
   contextual.py  LLM ile bağlam cümlesi üretimi (ölçüldü, varsayılan kapalı)
   answer.py      Claude + tool'lar, referans doğrulama
@@ -642,7 +697,10 @@ eval/
   questions_saleor.json     Saleor, 40 soru (14 dev / 26 test)
   KULLANICI_DENEYI.md       değer hipotezini ölçmek için protokol
   SORU_SETI.md              yeni bir repo için soru seti yazma rehberi
-tests/           217 birim testi — ağ ve API anahtarı gerektirmiyor
+tests/           239 birim testi — ağ ve API anahtarı gerektirmiyor
+tools/
+  komutlari_cikar.py      DEMO.md'den kopyalanabilir komut listesi üretir
+  netlestirme_olcumu.py   netleştirme öbeklerini ölçer (düz / menü / tavan)
 data/, runs/     indeksler, vektörler, proje kaydı, koşu kayıtları (git'e girmez)
 repos/           ölçüm için klonlanan dış repolar (git'e girmez)
 ```

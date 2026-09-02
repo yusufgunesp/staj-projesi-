@@ -171,6 +171,24 @@ def test_arama_arayuzun_bekledigi_alanlari_donuyor(server):
         assert field in hit
 
 
+def test_netlestirme_arayuzun_bekledigi_alanlari_donuyor(server):
+    status, body = post(server, "/api/facets", {"query": "payment"})
+    assert status == 200
+    for facet in body["facets"]:
+        # Öneri metni yanlış olabilir; dizin ve parça sayısı kullanıcının
+        # kontrol yüzeyi, o yüzden her zaman gitmeli.
+        for field in ("directory", "chunks", "label", "query"):
+            assert field in facet
+        # Özgün sorgu korunuyor: öbek onu değiştirmiyor, üstüne ekliyor.
+        assert facet["query"].startswith("payment")
+
+
+def test_netlestirmede_bos_sorgu_reddediliyor(server):
+    status, body = post(server, "/api/facets", {"query": "   "})
+    assert status == 400
+    assert "boş" in body["error"].lower()
+
+
 def test_bos_sorgu_reddediliyor(server):
     status, body = post(server, "/api/search", {"query": "   "})
     assert status == 400
