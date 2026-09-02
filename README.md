@@ -14,8 +14,9 @@ Sunucu retry-after başlığı gönderirse ona uyuluyor (`_base_client.py:793`).
 
 **Ölçülen sonuç:** iki Python kod tabanında, hiçbir ayarın görmediği test bölmelerinde —
 `anthropic` SDK'sının en zor setinde **getirme %96, kapsam %90**, ikinci kod tabanı Saleor'da
-**%100 / %96**. Bugüne kadarki bütün cevap koşularında toplam **bir** uydurma referans görüldü ve
-doğrulama katmanı onu yakaladı (bkz. [Cevaplama](#cevaplama)).
+**%100 / %96**. Aynı zor setin 26 soruluk test bölmesinde **cevap doğruluğu %100, cevabın
+referans verdiği dosya kapsamı %91**. Bugüne kadarki bütün cevap koşularında toplam **bir**
+uydurma referans görüldü ve doğrulama katmanı onu yakaladı (bkz. [Cevaplama](#cevaplama)).
 
 Bu sayılar önceki sürümde daha yüksekti (%100 / %93). Araç değişmedi — test bölmeleri büyüdü ve
 küçük örneklem iyimserliği ortadan kalktı. Ayrıntı [Ölçüm](#ölçüm) bölümünde.
@@ -337,18 +338,14 @@ sayı değil: 571 parçalık küçük bir indekste, aracın kendi kodu.
 
 **Cevap (hepsi `claude-haiku-4-5`, tek fark bağlam):**
 
-> Bu tablo, zor setin **14 soruluk** hâlinde ölçüldü. Test bölmesi sonradan 26'ya çıkarıldı ve
-> cevap tarafı yeniden koşulmadı — ücretli olduğu için. Yani buradaki %100/%93, getirme
-> tablosundaki güncel %96/%90'ın ölçüldüğü setin yarısına ait. Genişletilmiş sette cevap ölçümü
-> hâlâ açık bir iş.
-
 | Set | Genişletmeler | parça | doğruluk | **dosya kapsamı** | uydurma | referans/cevap |
 |-----|---------------|-------|----------|-------------------|---------|----------------|
 | Zor (12, bölünmemiş hâli) | kapalı | 8 | 75% | 46% | 0 | 1.3 |
 | Zor (12, bölünmemiş hâli) | açık | 15 | 100% | 57% | 0 | 2.1 |
 | Akış (20, doğrulama) | kapalı | 8 | 90% | 79% | 1 | 2.1 |
 | Akış (20, doğrulama) | açık | 15 | 95% | 84% | 0 | 2.8 |
-| Zor — test (14 soruluk hâli) | açık | 15 | **100%** | **93%**\* | **0** | 2.7 |
+| Zor — test (14 soruluk hâli) | açık | 15 | 100% | 93%\* | 0 | 2.7 |
+| **Zor — test (26 soru, güncel)** | açık | 15 | **100%** | **91%** | **0** | 5.4 |
 
 Getirme metrikleri tek başına yeterli değil: kapsam, eklenen slot sayısıyla matematiksel olarak
 **düşemez**, yani her ekleme kendini haklı çıkarır. Kararı cevap ölçümü verdi. Son sütun o
@@ -360,9 +357,19 @@ tasarlanmıştı (dizin kardeşi `z05`/`z06`'ya, import bağı `z03`'e). Doğrul
 hiç bakılmayan akış setinde yapıldı ve aynı yönü verdi: doğruluk +5, kapsam +5, uydurma referans
 1'den 0'a.
 
-Son satır projenin en temiz sayısı: hiçbir ayarın görmediği 14 soru. Cevap kapsamının getirme
-kapsamına eşit çıkması dikkat çekici — cevaplama katmanı getirmenin tamamını kullanıyor. Zor setin
-ilk hâlinde bu iki sayı arasında 37 puan fark vardı.
+Son iki satır projenin en temiz sayıları: hiçbir ayarın görmediği test bölmesi. Alttaki satır
+**26 soruya çıkarılmış güncel bölme** — doğruluk 26/26'da kaldı (%95 GA: %87-%100), dosya kapsamı
+%93'ten %91'e indi. Getirme tarafındaki büyümenin aksine cevap tarafı neredeyse hiç oynamadı.
+
+Cevap kapsamının (%91) getirme kapsamını (%90) **geçmesi** dikkat çekici ve sebebi ölçümde
+görünüyor: getirmenin kaçırdığı tek soruda (`z34`, iki ayrı uçtaki jeton sayımı) model doğru
+cevabı yine de verdi — iki `read_file` çağrısıyla getirmenin bulamadığı dosyaya kendi gitti.
+**Tool katmanı getirme hatasını telafi edebiliyor.** Zor setin ilk hâlinde bu iki sayı arasında
+37 puan fark vardı, şimdi cevap tarafı önde.
+
+Referans/cevap 2.7'den 5.4'e çıktı. Bu kontrol metriği (§Kural 2): kapsam **düşerken** referans
+sayısı iki katına çıktığına göre model daha çok dosya sayıp isabeti artırmıyor — 26 soruluk
+bölmedeki yeni sorular basitçe daha çok dosyaya dokunuyor.
 
 Model seçimi hakkında: aynı ölçüm `claude-opus-5` ile daha yüksek mutlak sonuç veriyor, ama
 **ölçüm aleti olarak Haiku daha iyi çıktı** — Opus tavana yakın çalıştığı için kolları ayırt
@@ -719,8 +726,9 @@ repos/           ölçüm için klonlanan dış repolar (git'e girmez)
    ayırt edilemiyor, ama gerçek olabilir. Gözden geçirilirken **setin tamamı** geçirilmeli,
    sadece kaçırılanlar değil (Kural 3), ve düzeltmeler **ölçüm düzeltmesi** diye işaretlenmeli.
 
-3. **Genişletilmiş sette cevap ölçümü.** Getirme tarafı 238 soruya çıktı; cevap tarafı hâlâ zor
-   setin 14 soruluk hâlinde ölçülmüş durumda. Ücretli olduğu için yeniden koşulmadı.
+3. **Cevap ölçümü diğer setlere de yayılmalı.** Zor setin 26 soruluk bölmesi koşuldu
+   (%100 doğruluk, %91 dosya kapsamı) ama Saleor ve akış setlerinin cevap tarafı hiç ölçülmedi.
+   Saleor önemli: cevaplama katmanı ikinci kod tabanında hiç sınanmadı.
 
 4. **Doküman ağırlıklandırmasını ölçmek.** Doküman parçalarının kod sonuçlarını bastırdığı
    görüldü (bkz. Öğrenilenler). Bu indekste doküman payı yalnızca %0,4 olduğu için etkisi
@@ -752,7 +760,8 @@ iyi bir alışveriş görünmedi.
   %4 ediyor ve güven aralığı 22 puandan 13'e indi. Sayılar düştü: araç değişmedi, eski sayılar
   küçük örneklem iyimserliğiydi.
 - **Akış kapsamını %80'in üzerine çıkarmak** — test bölmesinde %87 (30 soruluk hâlinde).
-- **Cevap tarafını zor sette ölçmek** — yapıldı, 14 soruluk bölmede %93 dosya kapsamı.
+- **Cevap tarafını zor sette ölçmek** — yapıldı; 26 soruluk güncel test bölmesinde %100
+  doğruluk, %91 dosya kapsamı, 0 uydurma referans.
 - **`types/` gürültüsü** — 60 soruluk sette bulunamayan dört sorunun üçü çeşitlilik slotlarıyla
   çözüldü. İlginç olan, `types/` parçalarının payının **artmış** olması (%15 → %21): sorun tip
   tanımlarının varlığı değil, gerçek cevaba yer kalmamasıymış.
