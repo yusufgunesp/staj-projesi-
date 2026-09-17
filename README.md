@@ -55,6 +55,7 @@ cp .env.example .env      # anahtarları .env dosyasına yazın, .env.example'a 
 |---------|---------|------------|
 | `ANTHROPIC_API_KEY` | Cevaplama ve bağlam üretimi | Cevap almak için evet |
 | `VOYAGE_API_KEY` | Embedding (`--provider voyage`) | Hayır — Ollama ya da `hash` de var |
+| `ANTHROPIC_WORKSPACE_ID` | Yalnızca **organizasyon seviyesinde** üretilmiş anahtar için (konsol: Settings → Workspaces → ID). Çalışma alanına bağlı anahtarda gerekmez | Anahtar türüne göre |
 
 ## Kullanım
 

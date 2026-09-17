@@ -28,10 +28,12 @@ Fallback'in de hazır olduğundan emin ol (yerel, ücretsiz, yarım saniye):
 ```
 
 **Krediyi kontrol et.** Canlı soru Anthropic API'sine gidiyor; bakiye biterse 400 döner ve
-demo orada durur. Tek satırlık kontrol (bir kuruşun altında):
+demo orada durur. Tek satırlık kontrol (bir kuruşun altında). Anahtar organizasyon
+seviyesindeyse (`.env`'de `ANTHROPIC_WORKSPACE_ID` gerekiyor) doğrudan `anthropic.Anthropic()`
+400 döner; o yüzden `anthropic_client` üzerinden:
 
 ```bash
-.venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); import anthropic; print('kredi OK' if anthropic.Anthropic().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
+.venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); from codeqa.answer import anthropic_client; print('kredi OK' if anthropic_client().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
 ```
 
 **MCP'yi bir kez dene** (§5 canlı yapılacaksa): Claude Code'u bu dizinde aç, `codeqa`

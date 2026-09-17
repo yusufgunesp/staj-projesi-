@@ -29,7 +29,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .answer import resolve_in_repo
+from .answer import api_error_hint, resolve_in_repo
 from .facets import facets as build_facets
 from .indexer import DEFAULT_EXCLUDES
 from .mcp_server import IndexNotReady, load_searcher
@@ -188,7 +188,11 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send({"error": str(exc)}, status=400)
         except Exception as exc:  # sunum sırasında çökmek yerine mesaj göster
-            self._send({"error": f"{type(exc).__name__}: {exc}"}, status=500)
+            hint = api_error_hint(exc)
+            message = f"{type(exc).__name__}: {exc}"
+            if hint:
+                message = f"{hint} ({message})"
+            self._send({"error": message}, status=500)
 
 
 class UIServer(ThreadingHTTPServer):

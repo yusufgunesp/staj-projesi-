@@ -19,6 +19,51 @@ from pathlib import Path
 
 from .search import HybridSearch, SearchHit
 
+
+def anthropic_client(**kwargs):
+    """`anthropic.Anthropic(...)`, çalışma alanı başlığı gerekiyorsa onunla.
+
+    Konsol iki tür anahtar üretiyor: çalışma alanına bağlı olan doğrudan
+    çalışıyor; organizasyon seviyesindeki ise her istekte
+    `anthropic-workspace-id` başlığı istiyor, yoksa 400 dönüyor ("This API key
+    is not scoped to a workspace"). SDK bu başlığı kendiliğinden eklemiyor.
+
+    `.env`'de `ANTHROPIC_WORKSPACE_ID` varsa başlık ekleniyor; yoksa davranış
+    aynen `anthropic.Anthropic(**kwargs)`.
+    """
+    import os
+
+    import anthropic
+
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
+    if workspace:
+        headers = dict(kwargs.pop("default_headers", None) or {})
+        headers["anthropic-workspace-id"] = workspace
+        kwargs["default_headers"] = headers
+    return anthropic.Anthropic(**kwargs)
+
+
+def api_error_hint(exc: BaseException) -> str | None:
+    """API hatasını kullanıcının düzeltebileceği bir cümleye çevirir; tanımadığında None.
+
+    Konsolun 400 mesajı doğru ama İngilizce ve "ne yapmalıyım"ı söylemiyor;
+    anahtar süresi dolup yenilenince tam bu duvara çarpıldı.
+    """
+    text = str(exc)
+    if "anthropic-workspace-id" in text or "not scoped to a workspace" in text:
+        return (
+            "Anahtar organizasyon seviyesinde üretilmiş. Ya konsolda bir çalışma alanının "
+            "(workspace) içinden yeni anahtar üret, ya da .env'e ANTHROPIC_WORKSPACE_ID=<id> "
+            "ekle (konsol: Settings → Workspaces → ID)."
+        )
+    if "must be a valid workspace ID" in text:
+        return "ANTHROPIC_WORKSPACE_ID yanlış; konsoldaki çalışma alanı ID'siyle karşılaştır."
+    if "authentication_error" in text or "invalid x-api-key" in text:
+        return "ANTHROPIC_API_KEY geçersiz ya da iptal edilmiş; konsoldan yeni anahtar üret."
+    if "credit balance" in text:
+        return "Kredi bitmiş; konsoldan bakiye yükle."
+    return None
+
 #: Ana katman. Hacimli ve basit işler (ör. değerlendirme çağrıları) için
 #: `claude-haiku-4-5` kullanılabilir — `model` parametresiyle değiştirilebilir.
 DEFAULT_MODEL = "claude-opus-5"
@@ -254,9 +299,7 @@ class CodebaseAnswerer:
 
     def _get_client(self):
         if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
+            self._client = anthropic_client()
         return self._client
 
     def _build_tools(self):

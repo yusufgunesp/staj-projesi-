@@ -221,3 +221,11 @@ def test_adaptive_thinking_only_for_models_that_support_it():
     assert supports_adaptive_thinking("claude-opus-5")
     assert supports_adaptive_thinking("claude-sonnet-5")
     assert not supports_adaptive_thinking("claude-haiku-4-5-20251001")
+
+
+def test_api_error_hint_workspace_ve_bilinmeyen():
+    from codeqa.answer import api_error_hint
+
+    exc = RuntimeError("Error code: 400 - This API key is not scoped to a workspace")
+    assert "ANTHROPIC_WORKSPACE_ID" in api_error_hint(exc)
+    assert api_error_hint(RuntimeError("başka bir şey")) is None

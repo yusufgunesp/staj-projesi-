@@ -97,11 +97,11 @@ class ContextGenerator:
 
     def _get_client(self):
         if self._client is None:
-            import anthropic
+            from .answer import anthropic_client
 
             # Varsayılan 10 dk değil ama büyük dosyalarda 1 dk da kısa kalıyor;
             # 8 eşzamanlı istekte kuyruk beklemesi de buna ekleniyor.
-            self._client = anthropic.Anthropic(timeout=180.0, max_retries=3)
+            self._client = anthropic_client(timeout=180.0, max_retries=3)
         return self._client
 
     def _cache_key(self, record: dict) -> str:

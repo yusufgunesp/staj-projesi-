@@ -21,3 +21,6 @@ dist/
 
 # Ölçüm için klonlanan dış repolar — üretilen veri gibi, depoya girmez
 repos/
+
+# Claude Code yerel çalıştırma ayarı
+.claude/

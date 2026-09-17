@@ -721,7 +721,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except Exception as exc:
+        # Yalnızca API hatalarını yakalayıp Türkçe ipucu ekliyoruz; gerisi traceback'ini korur
+        from .answer import api_error_hint
+
+        hint = api_error_hint(exc)
+        if hint is None:
+            raise
+        print(f"API hatası: {exc}\n→ {hint}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

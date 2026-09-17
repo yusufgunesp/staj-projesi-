@@ -7,7 +7,7 @@ cd ~/Desktop/staj && .venv/bin/python -m codeqa stats -i data/anthropic.jsonl
 
 .venv/bin/python -m codeqa embed -i data/anthropic.jsonl --provider hash
 
-.venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); import anthropic; print('kredi OK' if anthropic.Anthropic().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
+.venv/bin/python -c "from codeqa.cli import _load_env; _load_env(); from codeqa.answer import anthropic_client; print('kredi OK' if anthropic_client().messages.create(model='claude-haiku-4-5-20251001', max_tokens=5, messages=[{'role':'user','content':'hi'}]) else '')"
 
 # ── 2. Canlı soru (2 dakika, ikinci soruyla 4) — demonun kalbi
 .venv/bin/python -m codeqa ask "bir istek 429 alırsa kaç kez ve ne kadar beklenerek yeniden deneniyor?" -i data/anthropic.jsonl --provider voyage --repo .venv/lib/python3.14/site-packages/anthropic --model-name claude-haiku-4-5-20251001
